@@ -16,3 +16,12 @@ export function unauthorized(message = "未授权") {
 export function notFound(errorCode, message) {
     throw new ApiError(errorCode, message, 404);
 }
+export function badGateway(errorCode, message) {
+    throw new ApiError(errorCode, message, 502);
+}
+export function serviceUnavailable(errorCode, message) {
+    throw new ApiError(errorCode, message, 503);
+}
+export function gatewayTimeout(errorCode, message) {
+    throw new ApiError(errorCode, message, 504);
+}

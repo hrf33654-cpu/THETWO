@@ -19,3 +19,15 @@ export function unauthorized(message = "未授权"): never {
 export function notFound(errorCode: string, message: string): never {
   throw new ApiError(errorCode, message, 404);
 }
+
+export function badGateway(errorCode: string, message: string): never {
+  throw new ApiError(errorCode, message, 502);
+}
+
+export function serviceUnavailable(errorCode: string, message: string): never {
+  throw new ApiError(errorCode, message, 503);
+}
+
+export function gatewayTimeout(errorCode: string, message: string): never {
+  throw new ApiError(errorCode, message, 504);
+}

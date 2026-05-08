@@ -6,16 +6,17 @@
 
 ## 背景
 
-Android 设备的 ARCore 支持情况不稳定。用户可能遇到设备不支持、Google Play Services for AR 缺失、安装取消、相机权限拒绝、AR 初始化失败、锚点识别失败等情况。
+Android 设备的 AR 能力差异很大。即使主线改为 EasyAR Sense，用户仍可能遇到设备传感器不足、EasyAR 初始化失败、图像跟踪不可用、平面识别不可用、相机权限拒绝、锚点识别失败等情况。
 
 如果 AR 是唯一入口，大量用户会在召唤页被阻断，MVP 的“召唤 -> 截图 -> 回流聊天”闭环无法稳定验证。
 
 ## 决策
 
-AR 必须是 Optional。支持 AR 的设备进入 ARCore 图像锚定路径；不支持 AR 或 AR 初始化失败时，必须进入 fallback 路径。
+AR 必须是 Optional。支持 EasyAR 图像跟踪的设备进入锚点图召唤；锚点召唤成功且设备支持平面识别时，再启用平面稳定。任何 EasyAR 能力不可用时，必须进入 fallback 路径。
 
 fallback 路径至少包括：
 
+- EasyAR 锚点图召唤失败后的 CameraX 相机叠加。
 - CameraX 相机预览叠加。
 - 无相机权限时的纯屏模式。
 - 角色拖动、缩放、旋转。
@@ -26,17 +27,16 @@ fallback 路径至少包括：
 
 收益：
 
-- 非 AR 设备仍可体验核心召唤闭环。
-- ARCore 失败不会阻断 Alpha 测试。
-- 设备矩阵可以分为 AR 组和 fallback 组分别验证。
+- 非 EasyAR 或低能力设备仍可体验核心召唤闭环。
+- EasyAR 初始化、锚点识别或平面识别失败不会阻断 Alpha 测试。
+- 设备矩阵可以分为 EasyAR 锚点召唤、平面稳定和 fallback 组分别验证。
 
 代价：
 
-- 需要维护 AR 与 fallback 两条路径。
-- 埋点和失败矩阵必须区分 AR 漏斗与 fallback 漏斗。
+- 需要维护 EasyAR 锚点召唤、平面稳定与 fallback 多层路径。
+- 埋点和失败矩阵必须区分 EasyAR、平面稳定与 fallback 漏斗。
 
 ## 当前适用范围
 
 - 适用于所有 Android 召唤入口。
 - 后续 AR 方案调整时，仍默认保留非 AR fallback，除非新 ADR 明确废弃。
-

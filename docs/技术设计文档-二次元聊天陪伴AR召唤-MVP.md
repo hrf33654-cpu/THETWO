@@ -2,9 +2,9 @@
 
 ## 文档信息
 
-- 文档版本：`v0.3`
-- 文档状态：`Draft`
-- 更新时间：`2026-05-07`
+- 文档版本：`v0.4`
+- 文档状态：`In Progress`
+- 更新时间：`2026-05-08`
 - 关联 PRD：`PRD-二次元空间陪伴App-MVP.md`
 - 技术阶段：`MVP`
 - 客户端平台：`Android 原生`
@@ -26,7 +26,8 @@
 - 架构：`单 Activity + 多 Screen + ViewModel 分层`
 - 相机：`CameraX`
 - AR：
-  - 主路径：`ARCore + Augmented Images`
+  - 主路径：`EasyAR Sense Image Tracking / ImageTarget`
+  - 增强能力：`EasyAR Sense Plane Detection`
   - 发行策略：`AR Optional`
 - 3D 渲染：
   - 运行时模型格式：`glTF / GLB`
@@ -85,7 +86,7 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 职责：
 
 - 检测设备 AR 能力
-- 决定进入 `图像锚定 AR` 或 `fallback`
+- 决定进入 `EasyAR 锚点图召唤`、`平面稳定` 或 `fallback`
 - 管理召唤页状态机
 - 加载与控制 3D 角色
 - 生成截图
@@ -96,6 +97,7 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 - `CompanionPlacement`
 - `CaptureAsset`
 - `MarkerAsset`
+- `PlanePlacementState`
 
 ### 3.3 角色资产模块
 
@@ -176,8 +178,9 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 当前第一阶段后端仍为：
 
 - 开发验证码
-- mock 聊天回复
-- 未接真实模型服务
+- 真实 LLM 调用链路已接入
+- OpenAI 兼容 `chat/completions` provider
+- 线上仍需补 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL` 配置与联调
 
 ### 5.3 Prompt 结构
 
@@ -201,6 +204,9 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
   - 客户端展示等待态
   - 超时后给出重试入口
 - 失败不应阻断用户继续浏览既有聊天记录
+- 当前实现补充：
+  - 模型失败、超时、空回复时，`/chat/send` 直接返回失败，不回退为伪成功文案
+  - 模型成功后才写入用户消息与助手消息，避免失败重试产生脏历史
 
 ## 6. 云端存储方案
 
@@ -252,7 +258,7 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 
 ### 7.3 技术约束
 
-- 锚点图必须适合 `ARCore Augmented Images`
+- 锚点图必须适合 `EasyAR Image Tracking / ImageTarget`
 - 设计需具有足够特征点和稳定对比度
 - 验收由产品、设计、客户端共同完成
 
@@ -261,31 +267,42 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 - 没有正式锚点图产物，AR 主路径无法稳定联调
 - 阶段二开发前必须完成锚点图交付
 
-## 8. AR Optional 与召唤实现
+## 8. EasyAR Optional 与召唤实现
 
 ### 8.1 设备检测
 
 - 首次进入召唤页时执行能力检测
 - 逻辑分支：
-  - `支持 AR + 服务可用` -> 进入图像锚定 AR
-  - `支持 AR + 服务缺失` -> 尝试安装/启用
-  - `不支持 AR` -> 直接 fallback
+  - `EasyAR 图像跟踪可用` -> 进入锚点图召唤
+  - `锚点图召唤成功 + 平面识别可用` -> 启用平面稳定
+  - `EasyAR 初始化失败 / 图像跟踪不可用` -> 直接 fallback
+  - `相机权限不可用` -> 进入纯屏幕模式
 
 ### 8.2 AR 主路径
 
-- 使用 `Augmented Images` 识别官方锚点图
+- 使用 `EasyAR Image Tracking / ImageTarget` 识别官方锚点图
 - 识别成功后：
-  - 自动生成角色
+  - 自动在锚点图所在平面显示角色
+  - 若平面识别可用，将角色稳定放置到检测到的真实平面
   - 允许用户再做相对位移、旋转、缩放、重置
 - 识别成功时不强弹成功提示，尽量无感
 - 超过阈值未识别成功则提示重试
 
-### 8.3 丢锚处理
+### 8.3 平面稳定
+
+- 平面识别只在锚点图召唤成功后作为增强能力启用
+- 平面识别不作为独立主入口
+- 平面识别仅服务当前会话内放置稳定
+- 不保存房间地图
+- 不识别家具或空间语义
+- 平面识别不可用时，保持锚点图平面召唤，不阻断截图
+
+### 8.4 丢锚处理
 
 - 短时丢失时允许保持当前显示
 - 超过 `3 秒` 未恢复时提示重新对准锚点图
 
-### 8.4 Fallback 路径
+### 8.5 Fallback 路径
 
 - 第一层：相机预览叠加角色
 - 第二层：纯屏幕摆放模式
@@ -335,10 +352,12 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 
 - `Idle`
 - `CheckingCapability`
-- `RequestingInstall`
+- `InitializingEasyAR`
 - `AwaitingPermission`
 - `TrackingMarker`
 - `MarkerTracked`
+- `DetectingPlane`
+- `PlaneStable`
 - `FallbackCameraOverlay`
 - `FallbackScreenOnly`
 - `ModelLoadError`
@@ -372,9 +391,10 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 ### 12.2 AR 异常
 
 - 不支持 AR
-- AR 服务未安装
-- 安装失败或用户取消
+- EasyAR 初始化失败
+- 图像跟踪不可用
 - 锚点图识别失败
+- 平面识别不可用
 - 模型加载失败
 - 切后台导致会话失效
 
@@ -395,10 +415,10 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 
 ### 13.2 召唤主闭环
 
-- 支持 AR 设备上识别锚点图并成功召唤
-- 安装流触发成功
-- 取消安装后 fallback 成功
-- 不支持设备直接 fallback 成功
+- 支持 EasyAR 图像跟踪的设备上识别锚点图并成功召唤
+- 支持平面识别的设备上，锚点召唤成功后启用平面稳定
+- EasyAR 初始化失败后 fallback 成功
+- 不支持 EasyAR 的设备直接 fallback 成功
 
 ### 13.3 截图闭环
 
@@ -419,8 +439,9 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 ### 阶段二：AR 召唤增强
 
 - 能力检测
-- AR Optional 安装流
+- EasyAR SDK 初始化
 - 锚点图识别
+- 平面稳定
 - 3D 角色加载
 - fallback
 - 截图

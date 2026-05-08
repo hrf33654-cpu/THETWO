@@ -287,6 +287,19 @@ export function getChatHistory(userId: string): ChatMessageRecord[] {
   return rows;
 }
 
+export function getRecentChatHistory(userId: string, limit: number): ChatMessageRecord[] {
+  const normalizedLimit = Number.isInteger(limit) && limit > 0 ? limit : 12;
+  const rows = db.prepare(`
+    SELECT id, role, content, mode, client_message_id as clientMessageId, created_at as timestamp
+    FROM chat_messages
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(userId, normalizedLimit) as ChatMessageRecord[];
+
+  return rows.reverse();
+}
+
 export function clearChatHistory(userId: string): void {
   db.prepare(`DELETE FROM chat_messages WHERE user_id = ?`).run(userId);
 }
@@ -336,6 +349,16 @@ export function getRecentCapture(userId: string): RecentCaptureRecord {
   }
 
   return record;
+}
+
+export function findRecentCapture(userId: string): RecentCaptureRecord | null {
+  const record = db.prepare(`
+    SELECT title, summary, storage_location as storageLocation, updated_at as updatedAt
+    FROM recent_captures
+    WHERE user_id = ?
+  `).get(userId) as RecentCaptureRecord | undefined;
+
+  return record ?? null;
 }
 
 export function clearRecentCapture(userId: string): void {

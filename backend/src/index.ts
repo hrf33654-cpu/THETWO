@@ -5,8 +5,10 @@ import {
   clearChatHistory,
   clearRecentCapture,
   deleteAccount,
+  findRecentCapture,
   getChatHistory,
   getCompanionProfile,
+  getRecentChatHistory,
   getRecentCapture,
   getSessionByToken,
   recordDevCode,
@@ -108,7 +110,7 @@ app.get("/me/companion-profile", (req, res) => {
   res.json(ok(profile));
 });
 
-app.post("/chat/send", (req, res) => {
+app.post("/chat/send", async (req, res) => {
   const session = requireSession(req);
   const message = String(req.body?.message ?? "").trim();
   const clientMessageId = String(req.body?.clientMessageId ?? "").trim();
@@ -117,32 +119,67 @@ app.post("/chat/send", (req, res) => {
   }
 
   const mode = resolveChatMode(message);
-  appendChatMessage({
-    userId: session.userId,
-    role: "USER",
-    content: message,
-    mode,
-    clientMessageId,
-  });
+  const startedAt = Date.now();
 
-  const assistantMessage = generateAssistantReply(message, mode);
-  appendChatMessage({
-    userId: session.userId,
-    role: "ASSISTANT",
-    content: assistantMessage,
-    mode,
-  });
+  try {
+    const companionProfile = getCompanionProfile(session.userId);
+    const recentCapture = findRecentCapture(session.userId);
+    const recentHistory = getRecentChatHistory(session.userId, 12);
 
-  res.json(
-    ok(
-      {
-        assistantMessage,
+    const assistantMessage = await generateAssistantReply({
+      mode,
+      message,
+      companionProfile,
+      recentCapture,
+      recentHistory,
+    });
+
+    appendChatMessage({
+      userId: session.userId,
+      role: "USER",
+      content: message,
+      mode,
+      clientMessageId,
+    });
+    appendChatMessage({
+      userId: session.userId,
+      role: "ASSISTANT",
+      content: assistantMessage,
+      mode,
+    });
+
+    console.log(
+      JSON.stringify({
+        event: "chat.send",
+        userId: session.userId,
         mode,
-        timestamp: new Date().toISOString(),
-      },
-      "回复已生成",
-    ),
-  );
+        durationMs: Date.now() - startedAt,
+        outcome: "success",
+      }),
+    );
+
+    res.json(
+      ok(
+        {
+          assistantMessage,
+          mode,
+          timestamp: new Date().toISOString(),
+        },
+        "回复已生成",
+      ),
+    );
+  } catch (error) {
+    console.log(
+      JSON.stringify({
+        event: "chat.send",
+        userId: session.userId,
+        mode,
+        durationMs: Date.now() - startedAt,
+        outcome: error instanceof ApiError ? error.errorCode : "INTERNAL_SERVER_ERROR",
+      }),
+    );
+    throw error;
+  }
 });
 
 app.get("/chat/history", (req, res) => {

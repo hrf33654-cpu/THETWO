@@ -228,7 +228,8 @@
 
 创建时机：
 
-- `POST /chat/send` 先写用户消息，再写助手回复。
+- `POST /chat/send` 先调用模型；模型成功后再写用户消息与助手回复。
+- 模型失败、超时或空回复时，不写入 `chat_messages`。
 
 更新时机：
 
@@ -253,6 +254,7 @@
 
 - 接入 streaming 后要避免同一 `clientMessageId` 重复写入不可区分的用户消息。
 - 真实 LLM 接入后，`mode` 必须继续标记安全状态。
+- 若后续补本地离线草稿或发送队列，需要继续保证失败重试不重复落脏历史。
 
 ### 2.6 Capture
 
@@ -425,4 +427,3 @@
 - SQLite 到 PostgreSQL 迁移时，先迁当前真实模型，再引入下一阶段逻辑模型。
 - 引入 `ChatSummary`、`MemoryState`、`SafetyState` 时，应新增表或明确字段，不要混入现有 `chat_messages` 导致语义不清。
 - 所有迁移必须提供回滚或可重建路径，尤其是聊天摘要和记忆。
-

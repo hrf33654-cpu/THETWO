@@ -276,19 +276,25 @@ Authorization: Bearer <sessionToken>
 - `message`：用户输入，服务端会 trim，不能为空。
 - `clientMessageId`：客户端生成的消息 ID，用于客户端侧发送态关联。
 - `mode`：`NORMAL` 或 `RESTRICTED`，由后端决定。
-- `assistantMessage`：当前为 mock 回复；下一阶段替换为真实 LLM 回复。
+- `assistantMessage`：当前由后端统一调用 OpenAI 兼容 `chat/completions` 生成。
 
 可能错误：
 
 - `UNAUTHORIZED`：会话失效。
 - `CHAT_SEND_FAILED`：消息为空。
+- `PROFILE_REQUIRED`：当前用户还没有角色资料，无法生成回复。
+- `LLM_NOT_CONFIGURED`：模型环境变量未配置完成。
+- `LLM_TIMEOUT`：模型响应超时。
+- `LLM_UPSTREAM_FAILED`：模型上游返回非 2xx。
+- `LLM_EMPTY_REPLY`：模型未返回有效文本。
 - `INTERNAL_SERVER_ERROR`：后端内部错误。
 
 下一阶段约束：
 
-- 接入真实 LLM 后，`POST /chat/send` 的非流式响应结构必须继续可用。
+- `POST /chat/send` 的非流式响应结构必须继续可用。
 - 如果增加 streaming，应新增兼容方案或可选能力，不得破坏当前客户端。
 - 安全模式仍由服务端返回 `mode`，客户端不自行决定安全等级。
+- 服务端失败时不得伪造成功回复；客户端继续走现有失败与重试路径。
 
 ### `GET /chat/history`
 
@@ -433,4 +439,3 @@ Android -> POST /chat/send -> 后端一次性返回 assistantMessage
 - 保留当前非流式 `POST /chat/send` 作为兼容路径。
 - streaming 只影响回复传输方式，不改变安全模式由服务端决定的原则。
 - 客户端失败重试仍以 `clientMessageId` 或服务端返回消息为基础，避免重复写入不可区分数据。
-

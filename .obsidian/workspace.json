@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/开发流程文档-二次元聊天陪伴AR召唤-MVP.md",
+                "file": "docs/数据模型-THETWO-MVP.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "开发流程文档-二次元聊天陪伴AR召唤-MVP"
+              "title": "数据模型-THETWO-MVP"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "docs/开发流程文档-二次元聊天陪伴AR召唤-MVP.md",
+                "file": "docs/数据模型-THETWO-MVP.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "开发流程文档-二次元聊天陪伴AR召唤-MVP 的反向链接列表"
+              "title": "数据模型-THETWO-MVP 的反向链接列表"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "docs/开发流程文档-二次元聊天陪伴AR召唤-MVP.md",
+                "file": "docs/数据模型-THETWO-MVP.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "开发流程文档-二次元聊天陪伴AR召唤-MVP 的出链列表"
+              "title": "数据模型-THETWO-MVP 的出链列表"
             }
           },
           {
@@ -185,30 +185,31 @@
   },
   "active": "1e8ee68c9442aac8",
   "lastOpenFiles": [
+    "docs/失败矩阵-THETWO-MVP.md",
+    "docs/架构决策记录/架构决策记录-006-采用EasyARSense作为AR主线.md",
+    "backend/data/thetwo-dev.sqlite-journal",
+    "backend/node_modules/negotiator/index.js",
+    "backend/node_modules/negotiator/package.json",
+    "backend/node_modules/depd/index.js",
+    "backend/node_modules/depd/package.json",
+    "backend/node_modules/wrappy/wrappy.js",
+    "backend/node_modules/once/once.js",
+    "backend/node_modules/hasown/index.js",
+    "backend/node_modules/hasown/package.json",
+    "backend/node_modules/call-bind-apply-helpers/reflectApply.js",
+    "docs/开发流程文档-二次元聊天陪伴AR召唤-MVP.md",
     "docs/架构决策记录/架构决策记录-005-MVP不做房间理解.md",
     "docs/架构决策记录/架构决策记录-004-优先交付Fallback召唤.md",
     "docs/架构决策记录/架构决策记录-003-LLM只在服务端接入.md",
     "docs/架构决策记录/架构决策记录-002-AR必须Optional.md",
     "docs/架构决策记录/架构决策记录-001-聊天是主闭环.md",
-    "docs/架构决策记录",
-    "docs/失败矩阵-THETWO-MVP.md",
     "docs/数据模型-THETWO-MVP.md",
     "docs/API接口契约-THETWO-MVP.md",
     "docs/服务器部署与后端运行说明-THETWO-MVP.md",
     "docs/当前实现状态-二次元聊天陪伴AR召唤-MVP.md",
     "backend/node_modules/qs/LICENSE.md",
-    "app/build/intermediates/lint_partial_results/debug/lintAnalyzeDebug/out/lint-partial.xml",
-    "app/build/intermediates/lint_partial_results/debug/lintAnalyzeDebug/out/lint-provisional.xml",
-    "app/build/intermediates/lint_partial_results/debug/lintAnalyzeDebug/out/lint-definite.xml",
-    "app/build/intermediates/lint_partial_results/debug/lintAnalyzeDebug/out/lint-resources.xml",
-    "app/build/intermediates/unit_test_lint_partial_results/debug/lintAnalyzeDebugUnitTest/out/lint-partial.xml",
-    "app/build/test-results/testDebugUnitTest/TEST-com.thetwo.app.summon.SummonViewModelTest.xml",
-    "app/build/reports/tests/testDebugUnitTest/com.thetwo.app.summon.SummonViewModelTest/index.html",
-    "app/build/reports/tests/testDebugUnitTest/com.thetwo.app.summon.SummonViewModelTest",
-    "app/build/test-results/testDebugUnitTest/binary/in-progress-results-generic10823639552735566473.bin",
     "backend/node_modules/tsx/README.md",
     "docs/PRD-二次元空间陪伴App-MVP.md",
-    "docs/开发流程文档-二次元聊天陪伴AR召唤-MVP.md",
     "docs/技术设计文档-二次元聊天陪伴AR召唤-MVP.md",
     "backend/node_modules/cookie/README.md",
     "backend/node_modules/encodeurl/README.md",
@@ -220,7 +221,6 @@
     "backend/node_modules/dotenv/skills/dotenv/SKILL.md",
     "backend/node_modules/dotenv/SECURITY.md",
     "backend/node_modules/dotenv/README.md",
-    "backend/node_modules/dotenv/README-es.md",
     "pictures/ar_marker_fantasy.png.jpeg",
     "app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.webp",
     "app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp",

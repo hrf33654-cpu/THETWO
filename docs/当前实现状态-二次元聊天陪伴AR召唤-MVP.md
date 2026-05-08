@@ -2,7 +2,7 @@
 
 ## 文档信息
 
-- 文档版本：`v0.4`
+- 文档版本：`v0.5`
 - 文档状态：`In Progress`
 - 更新时间：`2026-05-08`
 - 关联 PRD：`PRD-二次元空间陪伴App-MVP.md`
@@ -24,19 +24,21 @@
 
 当前工程已经达到：
 
-- `阶段 0` 完成
-- `阶段 1` 完成
-- `阶段 2` 部分完成
-- `阶段 4/5/6` 的关键 MVP 闭环已具备可演示、可联调能力
-- `后端第一阶段` 服务端、服务器部署与 Android 客户端真后端联调已完成
+- Android 工程基线、最小 CI 与 Debug 构建链路已完成
+- 登录、创角、聊天、设置治理入口已接入真后端 Debug 联调
+- fallback 召唤、截图保存、最近作品回流已具备可演示能力
+- 后端第一阶段服务、服务器部署与 Android 客户端真后端联调已完成
+- AR 产品与技术路线已从 Google ARCore 调整为 `EasyAR Sense`，但代码层尚未接入 EasyAR SDK
 
 当前工程尚未达到：
 
-- `阶段 3` 真 AR 主路径未完成
-- `阶段 2` 真 3D 角色资产接入未完成
-- `真实邮件验证码与真实模型服务` 未完成
+- `P0` 真实 LLM 线上配置与公网联调验收未完成
+- `P1` 会话持久化、埋点与 Alpha 稳定性尚未系统落地
+- `P2` EasyAR 真 AR 主路径未完成
+- `P2` 真 3D 角色资产接入未完成
+- `真实邮件验证码` 未完成
+- `真实模型服务` 代码已接入，尚未完成线上环境配置与联调验收
 - `Release 版正式 HTTPS / 域名联调` 未完成
-- `阶段 7` Alpha 埋点与设备矩阵尚未系统落地
 
 一句话总结：
 
@@ -120,10 +122,15 @@
   - 远端聊天历史
   - 远端最近作品回流
 - 发送消息时先插入本地 `SENDING` 消息，再等待后端回复
+- 后端 `/chat/send` 已改为真实 LLM 调用链路：
+  - 读取角色资料
+  - 读取最近作品回流
+  - 读取最近聊天上下文
+  - 组装 OpenAI 兼容 `chat/completions` 请求
 
 当前限制：
 
-- 仍是后端 mock 聊天回复，不是真实 LLM
+- 真实模型服务仍依赖 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL` 的线上配置
 - 未接流式输出
 
 ### 3.5 安全模式
@@ -138,10 +145,11 @@
 
 - 后端 `POST /chat/send` 决定 `NORMAL / RESTRICTED`
 - 前端消费后端返回的 `mode`
+- 受限模式继续走模型回复，但使用更强的安全 prompt 与更低温度参数
 
 当前限制：
 
-- 后端仍是关键词 + mock 回复逻辑
+- 安全模式的入口判定仍以关键词规则为主
 - 未接正式审核策略和真实多轮安全模式
 
 ### 3.6 会话共享状态
@@ -177,7 +185,7 @@
 - 纯屏 fallback
 - 可拖动、缩放、旋转的角色卡片
 - 官方锚点图展示
-- Google Play Services for AR 安装页入口
+- Google Play Services for AR 安装页入口仍存在于当前代码中，属于旧 ARCore 路线遗留占位，不代表后续主线
 
 当前实现方式：
 
@@ -185,12 +193,14 @@
 - `CameraX PreviewView` 提供相机预览
 - 无权限时自动回退到纯屏模式
 - 角色目前为 2D 卡片式占位表现
+- 当前产品与技术路线已确定改为 `EasyAR Sense 图像跟踪 + 平面识别`，但代码尚未接入 EasyAR SDK
 
 当前限制：
 
 - 未进入真实 AR 会话
-- 未做 ARCore 图像锚定
-- 未做真实平面检测
+- 未接入 EasyAR Sense SDK
+- 未做 EasyAR 官方锚点图识别
+- 未做锚点召唤成功后的平面稳定
 
 ### 3.8 截图保存与聊天回流
 
@@ -285,12 +295,14 @@
 
 - `Express` 提供 REST API
 - `node:sqlite` 提供 SQLite 本地库
-- 服务端当前采用开发验证码与 mock 聊天回复
+- 服务端当前采用开发验证码
+- `/chat/send` 已接入 OpenAI 兼容 `chat/completions` provider
+- 未配置模型环境变量时，`/chat/send` 会返回 `503 LLM_NOT_CONFIGURED`
 
 当前限制：
 
 - 未接真实邮件服务
-- 未接真实模型服务
+- 线上模型环境尚未配置完成，未完成公网真模型联调验收
 
 ### 3.12 服务器部署状态
 
@@ -330,15 +342,21 @@
 
 ## 4. 当前未实现的内容
 
-### 4.1 真 AR 主路径
+### 4.1 EasyAR 真 AR 主路径
 
 未实现：
 
-- `ARCore` 初始化
+- `EasyAR Sense` SDK 接入与初始化
 - `AR Optional` 真正分流逻辑
-- `Augmented Images` 图像锚定
+- `ImageTarget / Image Tracking` 官方锚点图识别
+- 锚点图召唤成功后的平面识别与平面稳定
 - 丢锚保持
 - AR 会话失败恢复
+
+说明：
+
+- 当前代码中的 Google Play Services for AR 入口是历史占位，不再作为下一阶段 AR 主路径。
+- 下一阶段 AR 主线以 `EasyAR Sense` 为准：先完成官方锚点图召唤，再在支持设备上启用平面稳定；不支持时回退到 CameraX 相机叠加或纯屏召唤。
 
 ### 4.2 真 3D 角色资产接入
 
@@ -354,7 +372,7 @@
 未实现：
 
 - 真实邮件验证码发送
-- 真实模型服务接入
+- 真实模型服务的线上环境配置与联调验收
 - 真实会话摘要与长期记忆
 
 ### 4.4 客户端正式发布链路
@@ -395,6 +413,14 @@
 - `assembleDebug --offline`
 - `lintDebug --offline`
 - `testDebugUnitTest --offline`
+
+后端已验证通过：
+
+- `npm run build`
+- `npm test`
+- 本地 smoke test：
+  - 未配置 LLM 环境时，`POST /chat/send` 返回 `503`
+  - 失败请求不会向 `chat_messages` 写入脏数据
 
 客户端已产物：
 
@@ -439,6 +465,6 @@
 
 当前最优先的三件事是：
 
-1. 跑通 `FBX -> GLB -> 客户端加载`
-2. 接入 `ARCore + Augmented Images`
-3. 将开发验证码与 mock 聊天逐步替换为真实邮件服务与真实模型服务
+1. 完成 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL` 的线上配置与公网联调
+2. 补齐会话持久化、埋点与 Alpha 稳定性
+3. 再推进 `FBX -> GLB -> 客户端加载` 与 `EasyAR Sense 锚点图召唤 + 平面稳定`

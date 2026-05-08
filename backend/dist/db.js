@@ -212,6 +212,17 @@ export function getChatHistory(userId) {
   `).all(userId);
     return rows;
 }
+export function getRecentChatHistory(userId, limit) {
+    const normalizedLimit = Number.isInteger(limit) && limit > 0 ? limit : 12;
+    const rows = db.prepare(`
+    SELECT id, role, content, mode, client_message_id as clientMessageId, created_at as timestamp
+    FROM chat_messages
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(userId, normalizedLimit);
+    return rows.reverse();
+}
 export function clearChatHistory(userId) {
     db.prepare(`DELETE FROM chat_messages WHERE user_id = ?`).run(userId);
 }
@@ -246,6 +257,14 @@ export function getRecentCapture(userId) {
         notFound("CAPTURE_UPDATE_FAILED", "当前没有最近作品回流记录");
     }
     return record;
+}
+export function findRecentCapture(userId) {
+    const record = db.prepare(`
+    SELECT title, summary, storage_location as storageLocation, updated_at as updatedAt
+    FROM recent_captures
+    WHERE user_id = ?
+  `).get(userId);
+    return record ?? null;
 }
 export function clearRecentCapture(userId) {
     db.prepare(`DELETE FROM recent_captures WHERE user_id = ?`).run(userId);

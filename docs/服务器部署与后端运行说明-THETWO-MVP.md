@@ -129,14 +129,14 @@ curl http://111.231.14.253/health
 当前已实现：
 
 - 开发验证码
-- mock 聊天回复
+- 真实 LLM 调用链路
 - SQLite 本地库
 - `pm2` 常驻
 
 当前未实现：
 
 - 真实邮件验证码发送
-- 真实模型服务
+- 真实模型服务的线上环境变量配置与公网联调
 - 域名
 - HTTPS
 
@@ -176,4 +176,5 @@ curl http://111.231.14.253/health
 4. 从 SQLite 迁移到 PostgreSQL
 5. 数据库备份策略
 6. 真实邮件服务接入
-7. 真实模型服务接入
+7. 配置 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL / LLM_TIMEOUT_MS`
+8. 完成公网真模型联调与真机回归
