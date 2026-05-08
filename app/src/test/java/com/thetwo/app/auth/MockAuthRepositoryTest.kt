@@ -1,7 +1,7 @@
 package com.thetwo.app.auth
 
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -9,24 +9,19 @@ class MockAuthRepositoryTest {
     private val repository = MockAuthRepository()
 
     @Test
-    fun `login fails when consent is missing`() = runBlocking {
-        val result = repository.login(
-            email = "user@example.com",
-            code = "1234",
-            consentAccepted = false,
-        )
+    fun `request code returns debug hint for valid email`() = runBlocking {
+        val result = repository.requestCode(email = "user@example.com")
 
-        assertFalse(result.isSuccess)
+        assertEquals("123456", result.debugCodeHint)
     }
 
     @Test
-    fun `login succeeds with valid email code and consent`() = runBlocking {
-        val result = repository.login(
+    fun `verify code succeeds with valid email and code`() = runBlocking {
+        val result = repository.verifyCode(
             email = "user@example.com",
             code = "1234",
-            consentAccepted = true,
         )
 
-        assertTrue(result.isSuccess)
+        assertTrue(result.sessionToken.isNotBlank())
     }
 }

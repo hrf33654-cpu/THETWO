@@ -4,8 +4,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.thetwo.app.network.ApiException
+import com.thetwo.app.network.CompanionRepository
+import com.thetwo.app.network.AuthSession
+import kotlinx.coroutines.launch
 
-class CompanionSetupViewModel : ViewModel() {
+class CompanionSetupViewModel(
+    private val repository: CompanionRepository,
+) : ViewModel() {
     var uiState by mutableStateOf(CompanionSetupUiState())
         private set
 
@@ -25,9 +35,45 @@ class CompanionSetupViewModel : ViewModel() {
         uiState = uiState.copy(interestTagsInput = value, errorMessage = null)
     }
 
-    fun buildProfile(): CompanionProfile? {
+    fun submitProfile(
+        authSession: AuthSession?,
+        onSuccess: (CompanionProfile) -> Unit,
+        onUnauthorized: () -> Unit,
+    ) {
+        if (uiState.isSaving) return
+        val profile = buildProfileOrNull() ?: return
+        if (authSession == null) {
+            uiState = uiState.copy(errorMessage = "登录态已失效，请重新登录。")
+            return
+        }
+
+        viewModelScope.launch {
+            uiState = uiState.copy(isSaving = true, errorMessage = null)
+            runCatching {
+                repository.saveProfile(
+                    sessionToken = authSession.sessionToken,
+                    profile = profile,
+                )
+            }.onSuccess { savedProfile ->
+                uiState = uiState.copy(isSaving = false)
+                onSuccess(savedProfile)
+            }.onFailure { error ->
+                if (error is ApiException && error.isUnauthorized) {
+                    uiState = uiState.copy(isSaving = false)
+                    onUnauthorized()
+                } else {
+                    uiState = uiState.copy(
+                        isSaving = false,
+                        errorMessage = error.message ?: "角色资料保存失败，请稍后重试。",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun buildProfileOrNull(): CompanionProfile? {
         if (uiState.nickname.isBlank()) {
-            uiState = uiState.copy(errorMessage = "请先给角色起一个名字")
+            uiState = uiState.copy(errorMessage = "请先给角色起一个名字。")
             return null
         }
 
@@ -37,5 +83,13 @@ class CompanionSetupViewModel : ViewModel() {
             personalityTags = uiState.personalityTagsInput.split(",").map { it.trim() }.filter { it.isNotEmpty() },
             interestTags = uiState.interestTagsInput.split(",").map { it.trim() }.filter { it.isNotEmpty() },
         )
+    }
+
+    companion object {
+        fun factory(repository: CompanionRepository): ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                CompanionSetupViewModel(repository = repository)
+            }
+        }
     }
 }

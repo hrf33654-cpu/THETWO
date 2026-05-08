@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 
 private val DarkColorScheme = darkColorScheme(
     primary = Aurora,
@@ -12,6 +13,10 @@ private val DarkColorScheme = darkColorScheme(
     tertiary = Moonlight,
     background = Midnight,
     surface = NightSurface,
+    surfaceVariant = NightSurfaceSoft,
+    onSurface = Moonlight,
+    onSurfaceVariant = Mist,
+    outline = NightOutline,
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -20,6 +25,10 @@ private val LightColorScheme = lightColorScheme(
     tertiary = Aurora,
     background = Moonlight,
     surface = Moonlight,
+    surfaceVariant = Color(0xFFE7ECFA),
+    onSurface = Ink,
+    onSurfaceVariant = Twilight,
+    outline = Color(0xFF7C879F),
 )
 
 @Composable

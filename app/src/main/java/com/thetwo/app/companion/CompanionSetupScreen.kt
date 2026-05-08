@@ -18,11 +18,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.thetwo.app.network.AuthSession
 
 @Composable
 fun CompanionSetupScreen(
     viewModel: CompanionSetupViewModel,
+    authSession: AuthSession?,
     onProfileReady: (CompanionProfile) -> Unit,
+    onUnauthorized: () -> Unit,
 ) {
     val uiState by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { viewModel.uiState } }
 
@@ -40,7 +43,7 @@ fun CompanionSetupScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "阶段 1 先落基础人设输入，后续再接更完整的角色设定流程。",
+                text = "这一步会直接把角色资料写到后端，后续登录同一账号会继续沿用这份资料。",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(modifier = Modifier.height(24.dp))
@@ -86,14 +89,16 @@ fun CompanionSetupScreen(
             Spacer(modifier = Modifier.height(24.dp))
             Button(
                 onClick = {
-                    val profile = viewModel.buildProfile()
-                    if (profile != null) {
-                        onProfileReady(profile)
-                    }
+                    viewModel.submitProfile(
+                        authSession = authSession,
+                        onSuccess = onProfileReady,
+                        onUnauthorized = onUnauthorized,
+                    )
                 },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isSaving,
             ) {
-                Text("进入聊天首页")
+                Text(if (uiState.isSaving) "保存中..." else "进入聊天首页")
             }
         }
     }

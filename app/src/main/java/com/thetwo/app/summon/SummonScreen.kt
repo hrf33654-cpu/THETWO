@@ -80,6 +80,7 @@ fun SummonScreen(
     sessionViewModel: AppSessionViewModel,
     chatViewModel: ChatViewModel,
     onBack: () -> Unit,
+    onUnauthorized: () -> Unit,
 ) {
     val uiState by remember { androidx.compose.runtime.derivedStateOf { viewModel.uiState } }
     val sessionState by remember { androidx.compose.runtime.derivedStateOf { sessionViewModel.uiState } }
@@ -144,7 +145,7 @@ fun SummonScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "当前走 fallback 主路径，先把相机预览、纯屏降级、截图保存和聊天回流做完整。",
+                text = "当前先走 fallback 主路径，把相机预览、纯屏降级、截图保存和作品回流打通。",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -328,7 +329,6 @@ fun SummonScreen(
                             val saveResult = withContext(Dispatchers.IO) {
                                 BitmapSaver.saveCapture(context, bitmap)
                             }
-                            viewModel.setSavingCapture(false)
                             saveResult
                                 .onSuccess { location ->
                                     captureCount += 1
@@ -341,12 +341,19 @@ fun SummonScreen(
                                             "已保存到应用图片目录：$location"
                                         },
                                     )
-                                    sessionViewModel.setRecentCapture(reference)
-                                    chatViewModel.onRecentCaptureRecorded(reference, companionName)
-                                    viewModel.setStatusMessage("截图已保存，正在回到聊天页。")
-                                    onBack()
+                                    viewModel.syncRecentCapture(
+                                        authSession = sessionState.authSession,
+                                        reference = reference,
+                                        onSuccess = { savedReference ->
+                                            sessionViewModel.setRecentCapture(savedReference)
+                                            chatViewModel.onRecentCaptureRecorded(savedReference, companionName)
+                                            onBack()
+                                        },
+                                        onUnauthorized = onUnauthorized,
+                                    )
                                 }
                                 .onFailure { error ->
+                                    viewModel.setSavingCapture(false)
                                     viewModel.setStatusMessage(error.message ?: "截图保存失败")
                                 }
                         }
@@ -361,6 +368,28 @@ fun SummonScreen(
                     modifier = Modifier.weight(1f),
                 ) {
                     Text("返回聊天")
+                }
+            }
+
+            uiState.pendingRecentCapture?.let { pendingReference ->
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        viewModel.syncRecentCapture(
+                            authSession = sessionState.authSession,
+                            reference = pendingReference,
+                            onSuccess = { savedReference ->
+                                sessionViewModel.setRecentCapture(savedReference)
+                                chatViewModel.onRecentCaptureRecorded(savedReference, companionName)
+                                onBack()
+                            },
+                            onUnauthorized = onUnauthorized,
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isSavingCapture,
+                ) {
+                    Text("重试作品回流同步")
                 }
             }
         }

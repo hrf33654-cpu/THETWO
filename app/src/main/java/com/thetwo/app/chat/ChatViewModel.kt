@@ -4,63 +4,198 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.thetwo.app.companion.CompanionProfile
+import com.thetwo.app.network.ApiException
+import com.thetwo.app.network.AuthSession
+import com.thetwo.app.network.CaptureRepository
+import com.thetwo.app.network.ChatRepository
+import com.thetwo.app.network.CompanionRepository
+import com.thetwo.app.network.RemoteChatMessage
+import com.thetwo.app.network.RemoteChatMode
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 class ChatViewModel(
-    private val repository: MockChatRepository = MockChatRepository(),
+    private val chatRepository: ChatRepository,
+    private val companionRepository: CompanionRepository,
+    private val captureRepository: CaptureRepository,
 ) : ViewModel() {
     var uiState by mutableStateOf(
         ChatUiState(
-            messages = listOf(
-                ChatMessage(
-                    id = "welcome",
-                    author = MessageAuthor.COMPANION,
-                    content = "欢迎回来。聊天是当前 MVP 的主闭环，召唤页会作为增强入口补进来。",
-                ),
-            ),
+            messages = defaultWelcomeMessages(),
         ),
     )
         private set
 
+    private var loadedSessionToken: String? = null
+
     fun updateDraft(value: String) {
-        uiState = uiState.copy(draft = value)
+        uiState = uiState.copy(draft = value, errorMessage = null)
     }
 
-    fun sendMessage() {
+    fun bootstrapSession(
+        authSession: AuthSession?,
+        onProfileLoaded: (CompanionProfile) -> Unit,
+        onProfileRequired: () -> Unit,
+        onRecentCaptureLoaded: (RecentCaptureReference?) -> Unit,
+        onUnauthorized: () -> Unit,
+    ) {
+        val session = authSession ?: return
+        if (loadedSessionToken == session.sessionToken) return
+
+        viewModelScope.launch {
+            uiState = uiState.copy(
+                isInitializing = true,
+                errorMessage = null,
+            )
+
+            val profile = try {
+                companionRepository.fetchProfileOrNull(session.sessionToken)
+            } catch (error: Throwable) {
+                handleBootstrapFailure(error, onUnauthorized)
+                return@launch
+            }
+
+            if (profile == null) {
+                uiState = uiState.copy(isInitializing = false)
+                onProfileRequired()
+                return@launch
+            }
+
+            onProfileLoaded(profile)
+
+            var historyError: String? = null
+            val history = try {
+                chatRepository.getHistory(session.sessionToken)
+            } catch (error: Throwable) {
+                if (error is ApiException && error.isUnauthorized) {
+                    handleBootstrapFailure(error, onUnauthorized)
+                    return@launch
+                }
+                historyError = error.message ?: "聊天历史加载失败。"
+                emptyList()
+            }
+
+            val recentCapture = try {
+                captureRepository.getRecentCaptureOrNull(session.sessionToken)
+            } catch (error: Throwable) {
+                if (error is ApiException && error.isUnauthorized) {
+                    handleBootstrapFailure(error, onUnauthorized)
+                    return@launch
+                }
+                historyError = historyError ?: (error.message ?: "最近作品回流加载失败。")
+                null
+            }
+
+            val mappedMessages = if (history.isEmpty()) {
+                defaultWelcomeMessages(profile.nickname)
+            } else {
+                history.map(::toLocalMessage)
+            }
+
+            uiState = uiState.copy(
+                messages = mappedMessages,
+                isRestrictedMode = history.lastOrNull()?.mode == RemoteChatMode.RESTRICTED,
+                isInitializing = false,
+                errorMessage = historyError,
+                recentCaptureReference = recentCapture,
+            )
+            loadedSessionToken = session.sessionToken
+            onRecentCaptureLoaded(recentCapture)
+        }
+    }
+
+    fun sendMessage(
+        authSession: AuthSession?,
+        onUnauthorized: () -> Unit,
+    ) {
+        val session = authSession
         val content = uiState.draft.trim()
         if (content.isBlank() || uiState.isReplying) return
+        if (session == null) {
+            uiState = uiState.copy(errorMessage = "登录态已失效，请重新登录。")
+            return
+        }
 
-        val restrictedMode = shouldRestrict(content)
+        val clientMessageId = UUID.randomUUID().toString()
         val userMessage = ChatMessage(
-            id = "user-${System.currentTimeMillis()}",
+            id = clientMessageId,
             author = MessageAuthor.USER,
             content = content,
-            status = MessageStatus.SENT,
+            status = MessageStatus.SENDING,
         )
 
         uiState = uiState.copy(
             draft = "",
             isReplying = true,
-            isRestrictedMode = restrictedMode,
+            errorMessage = null,
             messages = uiState.messages + userMessage,
         )
 
         viewModelScope.launch {
-            val reply = repository.generateReply(
-                message = content,
-                mode = if (restrictedMode) MockReplyMode.RESTRICTED else MockReplyMode.NORMAL,
-            )
-            val companionMessage = ChatMessage(
-                id = "companion-${System.currentTimeMillis()}",
-                author = MessageAuthor.COMPANION,
-                content = reply,
-            )
-            uiState = uiState.copy(
-                isReplying = false,
-                messages = uiState.messages + companionMessage,
-            )
+            runCatching {
+                chatRepository.sendMessage(
+                    sessionToken = session.sessionToken,
+                    message = content,
+                    clientMessageId = clientMessageId,
+                )
+            }.onSuccess { reply ->
+                val updatedMessages = uiState.messages.map { message ->
+                    if (message.id == clientMessageId) {
+                        message.copy(
+                            status = MessageStatus.SENT,
+                            mode = reply.mode,
+                        )
+                    } else {
+                        message
+                    }
+                }
+                val companionMessage = ChatMessage(
+                    id = "assistant-${reply.timestamp}-$clientMessageId",
+                    author = MessageAuthor.COMPANION,
+                    content = reply.assistantMessage,
+                    mode = reply.mode,
+                )
+                uiState = uiState.copy(
+                    isReplying = false,
+                    isRestrictedMode = reply.mode == RemoteChatMode.RESTRICTED,
+                    messages = updatedMessages + companionMessage,
+                )
+            }.onFailure { error ->
+                if (error is ApiException && error.isUnauthorized) {
+                    resetSessionState()
+                    onUnauthorized()
+                } else {
+                    uiState = uiState.copy(
+                        isReplying = false,
+                        errorMessage = error.message ?: "发送失败，请稍后重试。",
+                        messages = uiState.messages.markMessageStatus(
+                            messageId = clientMessageId,
+                            status = MessageStatus.FAILED,
+                        ),
+                    )
+                }
+            }
         }
+    }
+
+    fun retryMessage(
+        messageId: String,
+        authSession: AuthSession?,
+        onUnauthorized: () -> Unit,
+    ) {
+        val original = uiState.messages.firstOrNull { it.id == messageId } ?: return
+        if (original.author != MessageAuthor.USER) return
+
+        uiState = uiState.copy(
+            draft = original.content,
+            messages = uiState.messages.filterNot { it.id == messageId },
+        )
+        sendMessage(authSession, onUnauthorized)
     }
 
     fun onRecentCaptureRecorded(reference: RecentCaptureReference, companionName: String) {
@@ -81,18 +216,78 @@ class ChatViewModel(
 
     fun clearConversation(companionName: String) {
         uiState = ChatUiState(
-            messages = listOf(
-                ChatMessage(
-                    id = "reset-welcome",
-                    author = MessageAuthor.COMPANION,
-                    content = "$companionName 的聊天记录已清空。我们可以重新开始。",
-                ),
-            ),
+            messages = defaultWelcomeMessages(companionName),
         )
     }
 
-    private fun shouldRestrict(content: String): Boolean {
-        val keywords = listOf("未成年", "初中", "高中", "不想活", "自杀", "轻生", "伤害自己")
-        return keywords.any { content.contains(it, ignoreCase = true) }
+    fun resetSessionState() {
+        loadedSessionToken = null
+        uiState = ChatUiState(
+            messages = defaultWelcomeMessages(),
+        )
     }
+
+    private fun handleBootstrapFailure(
+        error: Throwable,
+        onUnauthorized: () -> Unit,
+    ) {
+        if (error is ApiException && error.isUnauthorized) {
+            resetSessionState()
+            onUnauthorized()
+        } else {
+            uiState = uiState.copy(
+                isInitializing = false,
+                errorMessage = error.message ?: "远端会话加载失败。",
+            )
+        }
+    }
+
+    companion object {
+        fun factory(
+            chatRepository: ChatRepository,
+            companionRepository: CompanionRepository,
+            captureRepository: CaptureRepository,
+        ): ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                ChatViewModel(
+                    chatRepository = chatRepository,
+                    companionRepository = companionRepository,
+                    captureRepository = captureRepository,
+                )
+            }
+        }
+    }
+}
+
+private fun List<ChatMessage>.markMessageStatus(
+    messageId: String,
+    status: MessageStatus,
+): List<ChatMessage> {
+    return map { message ->
+        if (message.id == messageId) {
+            message.copy(status = status)
+        } else {
+            message
+        }
+    }
+}
+
+private fun defaultWelcomeMessages(companionName: String = "角色"): List<ChatMessage> {
+    return listOf(
+        ChatMessage(
+            id = "welcome",
+            author = MessageAuthor.COMPANION,
+            content = "欢迎回来。$companionName 会先把聊天作为主闭环，召唤页作为增强入口继续接入。",
+        ),
+    )
+}
+
+private fun toLocalMessage(remoteMessage: RemoteChatMessage): ChatMessage {
+    return ChatMessage(
+        id = remoteMessage.id,
+        author = if (remoteMessage.role == "USER") MessageAuthor.USER else MessageAuthor.COMPANION,
+        content = remoteMessage.content,
+        status = MessageStatus.SENT,
+        mode = remoteMessage.mode,
+    )
 }

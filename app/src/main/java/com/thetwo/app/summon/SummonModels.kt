@@ -1,5 +1,7 @@
 package com.thetwo.app.summon
 
+import com.thetwo.app.chat.RecentCaptureReference
+
 enum class SummonEntryState {
     PRIVACY_REQUIRED,
     CAMERA_PERMISSION_REQUIRED,
@@ -34,4 +36,5 @@ data class SummonUiState(
     val arServicesInstalled: Boolean = false,
     val isSavingCapture: Boolean = false,
     val statusMessage: String? = null,
+    val pendingRecentCapture: RecentCaptureReference? = null,
 )

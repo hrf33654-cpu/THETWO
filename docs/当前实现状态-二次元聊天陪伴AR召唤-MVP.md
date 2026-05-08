@@ -2,42 +2,45 @@
 
 ## 文档信息
 
-- 文档版本：`v0.1`
+- 文档版本：`v0.4`
 - 文档状态：`In Progress`
 - 更新时间：`2026-05-08`
-- 关联 PRD：`PRD-二次元空间陪伴App-MVP.md`[[PRD-二次元空间陪伴App-MVP]]
-- 关联开发流程：`开发流程文档-二次元聊天陪伴AR召唤-MVP.md`[[开发流程文档-二次元聊天陪伴AR召唤-MVP]]
-- 关联技术设计：`技术设计文档-二次元聊天陪伴AR召唤-MVP.md`[[技术设计文档-二次元聊天陪伴AR召唤-MVP]]
+- 关联 PRD：`PRD-二次元空间陪伴App-MVP.md`
+- 关联开发流程：`开发流程文档-二次元聊天陪伴AR召唤-MVP.md`
+- 关联技术设计：`技术设计文档-二次元聊天陪伴AR召唤-MVP.md`
 - 当前代码基线：`com.thetwo.app`
 
 ## 1. 文档目的
 
-本文档只回答两类问题：
+本文档只回答三类问题：
 
-- 当前版本已经做到了什么。
-- 当前版本还没有做到什么。
+- 当前版本已经做到了什么
+- 当前版本还没有做到什么
+- 当前版本的验证结果是什么
 
-本文档不重复写未来规划，也不代替 PRD 或技术设计。它是当前工程实现状态的快照。
+本文档不代替 PRD、开发流程或技术设计。它是当前工程实现状态的快照。
 
 ## 2. 当前总体结论
 
 当前工程已经达到：
 
-- `阶段 0` 基本完成
-- `阶段 1` 基本完成
+- `阶段 0` 完成
+- `阶段 1` 完成
 - `阶段 2` 部分完成
-- `阶段 4/5/6` 的 MVP 关键链路已具备可演示能力
+- `阶段 4/5/6` 的关键 MVP 闭环已具备可演示、可联调能力
+- `后端第一阶段` 服务端、服务器部署与 Android 客户端真后端联调已完成
 
 当前工程尚未达到：
 
 - `阶段 3` 真 AR 主路径未完成
 - `阶段 2` 真 3D 角色资产接入未完成
-- `阶段 6` 账号删除与长期记忆后端闭环未完成
+- `真实邮件验证码与真实模型服务` 未完成
+- `Release 版正式 HTTPS / 域名联调` 未完成
 - `阶段 7` Alpha 埋点与设备矩阵尚未系统落地
 
 一句话总结：
 
-当前版本是 `聊天主闭环 + fallback 召唤闭环` 可用，`真 AR + 真 3D 角色渲染` 未完成。
+当前版本是 `聊天主闭环 + fallback 召唤闭环 + 真后端 Debug 联调版`，但还不是 `PRD 完整目标版`。
 
 ## 3. 已经实现的内容
 
@@ -45,38 +48,35 @@
 
 已实现：
 
-- Android 应用名已统一为 `THETWO`
-- 包名、`namespace`、`applicationId` 已统一为 `com.thetwo.app`
-- 已切换为 `单 Activity + Compose Navigation`
-- 已建立主功能目录：`auth`、`chat`、`companion`、`summon`、`settings`、`session`、`media`
+- Android 应用名统一为 `THETWO`
+- 包名、`namespace`、`applicationId` 统一为 `com.thetwo.app`
+- 架构为 `单 Activity + Compose Navigation`
+- 已建立主功能目录：`auth`、`chat`、`companion`、`summon`、`settings`、`session`、`media`、`network`
 - 已建立最小 CI 工作流：Debug 构建 + Android Lint
-- 已建立项目内 JDK 运行时目录 `.tools/jdk21` 供本地构建使用，并加入 `.gitignore`
-
-当前意义：
-
-- 工程不再是 Android Studio 默认模板
-- 后续功能开发不需要再次做包名与结构迁移
+- 已建立项目内 JDK 运行时目录 `.tools/jdk21`
 
 ### 3.2 登录与隐私同意
 
 已实现：
 
-- 邮箱输入框
-- 验证码输入框
-- 隐私说明与数据处理说明同意勾选
-- 未同意前禁止登录提交
-- mock 登录仓库与错误提示
+- 登录页包含邮箱输入、验证码输入、隐私同意勾选
+- 登录流已改成两步式：
+  - `POST /auth/request-code`
+  - `POST /auth/verify-code`
+- Debug 版会显示开发验证码提示
+- 登录成功后拿到 `sessionToken`
+- 登录后根据 `profileCompleted` 决定进入创角页或直接进入聊天页
 
 当前实现方式：
 
-- 使用 `AuthViewModel + MockAuthRepository`
-- 本地校验邮箱格式、验证码长度、隐私同意状态
-- 登录成功后进入创角页
+- 使用 `AuthViewModel + AuthRepository`
+- 客户端通过公网入口 `http://111.231.14.253/` 请求后端
+- Debug 版放开对该 IP 的明文 HTTP 访问
 
 当前限制：
 
-- 未接真实邮箱验证码发送
-- 未接真实后端账号系统
+- 仍是开发验证码，不是真实邮件验证码
+- `sessionToken` 只保存在内存态，不做本地持久化
 
 ### 3.3 创角
 
@@ -86,81 +86,86 @@
 - 语气输入
 - 人格标签输入
 - 兴趣标签输入
+- 创角保存到后端 `PUT /me/companion-profile`
 
 当前实现方式：
 
-- 使用 `CompanionSetupViewModel`
-- 将逗号分隔的标签转成 `CompanionProfile`
-- 创角完成后写入会话状态并进入聊天首页
+- 使用 `CompanionSetupViewModel + CompanionRepository`
+- 角色资料保存成功后写入会话状态并进入聊天首页
 
 当前限制：
 
 - 无高级角色编辑器
-- 无角色头像、服装、动作配置
+- 只有单角色模型，不支持多角色
 
 ### 3.4 聊天主闭环
 
 已实现：
 
 - 聊天首页
-- 消息列表
-- 消息输入框
-- 角色 mock 回复
-- “角色回复中”状态
+- 远端聊天历史拉取 `GET /chat/history`
+- 远端消息发送 `POST /chat/send`
+- 本地消息状态：
+  - `SENDING`
+  - `SENT`
+  - `FAILED`
+- 失败消息可重试
 - 最近作品回流卡片展示
 
 当前实现方式：
 
-- 使用 `ChatViewModel + MockChatRepository`
-- 用户消息发送后追加到消息列表
-- mock 仓库延迟返回角色文本
-- 角色回复写回聊天流
+- 使用 `ChatViewModel + ChatRepository`
+- 进入聊天页时恢复：
+  - 远端角色资料
+  - 远端聊天历史
+  - 远端最近作品回流
+- 发送消息时先插入本地 `SENDING` 消息，再等待后端回复
 
 当前限制：
 
-- 未接真实 LLM
+- 仍是后端 mock 聊天回复，不是真实 LLM
 - 未接流式输出
-- 未做消息持久化
 
 ### 3.5 安全模式
 
 已实现：
 
-- 未成年人相关关键词触发受限模式
-- 危机内容相关关键词触发受限模式
-- 聊天页显示当前处于安全/受限模式
-- mock 回复切换到更保守文案
+- 聊天页支持安全/受限模式展示
+- 受限模式不再依赖前端本地关键词切换
+- 前端根据后端返回的 `mode=RESTRICTED` 显示更保守的状态文案
 
 当前实现方式：
 
-- `ChatViewModel.shouldRestrict()` 通过关键词判断
-- 命中后使用 `MockReplyMode.RESTRICTED`
-- mock 仓库返回安全劝导类文本
+- 后端 `POST /chat/send` 决定 `NORMAL / RESTRICTED`
+- 前端消费后端返回的 `mode`
 
 当前限制：
 
-- 仍是本地规则判断
-- 未接正式审核服务
-- 未接后端多轮安全状态
+- 后端仍是关键词 + mock 回复逻辑
+- 未接正式审核策略和真实多轮安全模式
 
 ### 3.6 会话共享状态
 
 已实现：
 
-- 当前登录邮箱
-- 当前角色信息
+- 当前认证会话 `authSession`
+- 当前角色资料
 - 最近作品回流引用
 - AR/相机隐私说明确认状态
 
 当前实现方式：
 
 - 使用 `AppSessionViewModel`
-- 在导航层跨页面共享
+- 全局共享：
+  - `authSession`
+  - `companionProfile`
+  - `recentCaptureReference`
+  - `arPrivacyAccepted`
 
-当前意义：
+当前限制：
 
-- 聊天页、召唤页、设置页可以共享核心状态
-- 最近作品回流不再是单页临时数据
+- 仍以内存态为主
+- 重启应用后需要重新登录
 
 ### 3.7 召唤页 fallback 主路径
 
@@ -179,7 +184,7 @@
 - `SummonViewModel` 管理入口状态
 - `CameraX PreviewView` 提供相机预览
 - 无权限时自动回退到纯屏模式
-- 角色目前为可变换的 2D/卡片式占位表现，用于跑通召唤与截图流程
+- 角色目前为 2D 卡片式占位表现
 
 当前限制：
 
@@ -193,8 +198,12 @@
 
 - 生成召唤截图
 - 保存截图到系统相册或应用图片目录
-- 保存成功后生成最近作品回流
-- 返回聊天页后角色会引用刚刚的召唤行为
+- 截图保存后调用 `PUT /me/recent-capture`
+- 同步成功后回到聊天页并生成最近作品回流
+- 同步失败时：
+  - 保留本地截图
+  - 不生成伪回流
+  - 页面提示可重试同步
 
 当前实现方式：
 
@@ -216,20 +225,108 @@
 - 隐私与相机说明卡片
 - 权限边界说明卡片
 - 最近作品回流展示
-- 清除最近作品回流
-- 清空聊天记录
-- 账号数据删除入口占位
-- 安全策略说明入口
+- 清除最近作品回流 `DELETE /me/recent-capture`
+- 清空聊天记录 `DELETE /chat/history`
+- 账号数据删除入口 `DELETE /me`
 
 当前实现方式：
 
-- 设置页直接读取 `AppSessionViewModel` 与 `ChatViewModel`
+- 使用 `SettingsViewModel`
+- 真正调用后端接口，而不是本地占位
 - 清除最近作品回流只删除 App 内引用，不删除系统相册文件
 
 当前限制：
 
-- 账号删除仍是占位
-- 未接真实后端清理逻辑
+- 删除账号后仍以“返回登录页 + 清空内存态”为主
+- 未接更细粒度的数据导出或软删除策略
+
+### 3.10 网络层与调试联调配置
+
+已实现：
+
+- `Retrofit + OkHttp + Gson`
+- `INTERNET` 权限
+- Debug 专用 `network_security_config`
+- `BuildConfig.API_BASE_URL`
+- `AppContainer` 手动依赖注入
+
+当前实现方式：
+
+- Debug 版 `API_BASE_URL = http://111.231.14.253/`
+- Release 版保留 HTTPS 占位，不允许当前明文 IP 策略进入正式发布链路
+
+当前限制：
+
+- 还没有正式域名
+- 还没有 Release 可用的 HTTPS 接口
+
+### 3.11 后端第一阶段
+
+已实现：
+
+- `backend/` 最小服务目录
+- `Node + TypeScript + Express + SQLite`
+- 接口：
+  - `GET /health`
+  - `POST /auth/request-code`
+  - `POST /auth/verify-code`
+  - `GET /me`
+  - `PUT /me/companion-profile`
+  - `GET /me/companion-profile`
+  - `POST /chat/send`
+  - `GET /chat/history`
+  - `DELETE /chat/history`
+  - `PUT /me/recent-capture`
+  - `GET /me/recent-capture`
+  - `DELETE /me/recent-capture`
+  - `DELETE /me`
+
+当前实现方式：
+
+- `Express` 提供 REST API
+- `node:sqlite` 提供 SQLite 本地库
+- 服务端当前采用开发验证码与 mock 聊天回复
+
+当前限制：
+
+- 未接真实邮件服务
+- 未接真实模型服务
+
+### 3.12 服务器部署状态
+
+已实现：
+
+- Ubuntu 22.04 服务器初始化完成
+- Node 24 已安装
+- PostgreSQL 14 已安装
+- 已创建 `thetwo` 数据库与用户
+- `pm2` 已托管 `thetwo-backend`
+- `Nginx` 已完成反向代理
+- 下列地址已验证通过：
+  - `http://127.0.0.1:8787/health`
+  - `http://127.0.0.1/health`
+  - `http://111.231.14.253/health`
+  - `http://111.231.14.253/`
+
+当前说明：
+
+- 当前服务器上 PostgreSQL 已安装并可用
+- 当前后端代码实际使用的仍是 `SQLite`
+- PostgreSQL 是下一阶段可切换的正式数据库基础，不是当前运行中的主存储
+
+当前公网联调地址：
+
+- `http://111.231.14.253`
+
+当前内网后端监听地址：
+
+- `http://127.0.0.1:8787`
+
+当前限制：
+
+- 仍是 HTTP
+- 未接域名
+- 未接 HTTPS
 
 ## 4. 当前未实现的内容
 
@@ -243,10 +340,6 @@
 - 丢锚保持
 - AR 会话失败恢复
 
-当前影响：
-
-- 现在的召唤页仍然是 fallback MVP，不是真 AR 体验
-
 ### 4.2 真 3D 角色资产接入
 
 未实现：
@@ -256,38 +349,34 @@
 - 3D 模型渲染
 - 待机动画播放
 
-当前影响：
-
-- 角色仍然是 UI 卡片式占位，不是 PRD 定义的 3D 角色呈现
-
-### 4.3 真实账号与后端
+### 4.3 真实外部服务
 
 未实现：
 
-- 邮箱验证码服务
-- 登录态持久化
-- 会话归属
-- 云端角色配置
-- 云端最近作品元信息
+- 真实邮件验证码发送
+- 真实模型服务接入
+- 真实会话摘要与长期记忆
 
-当前影响：
-
-- 现在属于本地 mock 版 MVP
-
-### 4.4 长期记忆与正式存储
+### 4.4 客户端正式发布链路
 
 未实现：
 
-- `Room` 本地存储
-- `DataStore` 配置落盘
-- 长期聊天记忆
-- 作品历史存储
+- `sessionToken` 本地持久化
+- Release 版正式 HTTPS 联调
+- 正式域名配置
+- Debug / Release 环境切换策略的完整生产化
 
-当前影响：
+### 4.5 后端正式化
 
-- 目前状态主要保存在内存中，App 重启后不会保留完整上下文
+未实现：
 
-### 4.5 Alpha 数据与埋点
+- 从 `SQLite` 迁移到 `PostgreSQL`
+- 生产级日志整理
+- 监控
+- 备份
+- 域名与 HTTPS 证书
+
+### 4.6 Alpha 数据与埋点
 
 未实现：
 
@@ -298,51 +387,58 @@
 - 聊天回流率埋点
 - AR 漏斗与 fallback 漏斗拆分埋点
 
-当前影响：
-
-- 当前版本适合功能演示，不适合正式 Alpha 数据验证
-
 ## 5. 当前构建与验证结果
 
-已验证通过：
+客户端已验证通过：
 
-- `assembleDebug`
+- `compileDebugKotlin`
 - `assembleDebug --offline`
-- `lintDebug`
 - `lintDebug --offline`
-- `testDebugUnitTest`
+- `testDebugUnitTest --offline`
 
-已产物：
+客户端已产物：
 
 - Debug 安装包：`app/build/outputs/apk/debug/app-debug.apk`
 - Lint 报告：`app/build/reports/lint-results-debug.html`
 
-当前已知警告：
+后端已验证通过：
 
-- Android SDK 命令行工具会提示 `SDK XML version 4` 警告
-- 该警告当前不阻断构建
+- `npm install`
+- `npm run build`
+- `pm2 start dist/index.js --name thetwo-backend`
+- `pm2 save`
+- `pm2 startup`
+- `curl http://127.0.0.1:8787/health`
+- `curl http://127.0.0.1/health`
+- `curl http://111.231.14.253/health`
+
+联调已验证通过：
+
+- Debug 客户端可请求 `POST /auth/request-code`
+- Debug 客户端可请求 `POST /auth/verify-code`
+- 客户端可显示开发验证码提示
+- 客户端可成功登录并继续走创角/聊天流程
 
 ## 6. 目前最接近 PRD 的完成度判断
 
-如果按 PRD 的“聊天主闭环 + AR 增强”来判断：
+如果按 PRD 的“聊天主闭环 + AR 增强 + 后端服务”来判断：
 
 - `聊天主闭环`：已基本完成
 - `fallback 召唤闭环`：已基本完成
 - `设置与治理入口`：已基本完成
+- `服务器与最小后端`：已完成
+- `Android 客户端真后端接入`：已完成
 - `真 AR 主路径`：未完成
 - `真 3D 角色入场`：未完成
-- `后端正式化`：未完成
 
 因此当前状态应定义为：
 
-`可演示的 MVP 基本版`，不是 `PRD 完整目标版`。
+`可演示的 MVP 真后端联调版`，不是 `PRD 完整目标版`。
 
 ## 7. 下一阶段最优先事项
 
 当前最优先的三件事是：
 
-1. 接入 `ARCore + Augmented Images`
-2. 跑通 `FBX -> GLB -> 客户端加载`
-3. 用真实 3D 角色替换当前召唤页里的卡片式占位
-
-只有这三件事落地后，当前版本才会从“fallback MVP”进入“接近 PRD 核心目标”的状态。
+1. 跑通 `FBX -> GLB -> 客户端加载`
+2. 接入 `ARCore + Augmented Images`
+3. 将开发验证码与 mock 聊天逐步替换为真实邮件服务与真实模型服务

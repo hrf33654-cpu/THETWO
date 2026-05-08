@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -22,11 +23,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.thetwo.app.network.AuthSession
 
 @Composable
 fun LoginScreen(
     viewModel: AuthViewModel,
-    onLoginSuccess: () -> Unit,
+    onLoginSuccess: (AuthSession) -> Unit,
 ) {
     val uiState by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { viewModel.uiState } }
 
@@ -45,7 +47,7 @@ fun LoginScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "阶段 1 先跑通邮箱登录与隐私同意主链路，后续再接真实验证码服务。",
+                text = "当前先接开发验证码登录。流程会固定成两步：先发送验证码，再验证进入 THETWO。",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(modifier = Modifier.height(24.dp))
@@ -62,7 +64,7 @@ fun LoginScreen(
                 onValueChange = viewModel::updateVerificationCode,
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("验证码") },
-                supportingText = { Text("MVP 先使用任意 4 位以上占位验证码") },
+                supportingText = { Text("开发期会在发送验证码后展示调试验证码提示。") },
                 singleLine = true,
             )
             Spacer(modifier = Modifier.height(16.dp))
@@ -75,9 +77,25 @@ fun LoginScreen(
                     onCheckedChange = viewModel::updateConsentAccepted,
                 )
                 Text(
-                    text = "我已阅读并同意隐私说明与数据处理说明。未勾选前不可提交登录。",
+                    text = "我已阅读并同意隐私说明与数据处理说明。未勾选前不可请求验证码或登录。",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 12.dp),
+                )
+            }
+            uiState.requestMessage?.let { message ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            uiState.debugCodeHint?.let { debugCode ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "开发验证码：$debugCode",
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.bodyMedium,
                 )
             }
             uiState.errorMessage?.let { message ->
@@ -89,12 +107,27 @@ fun LoginScreen(
                 )
             }
             Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = { viewModel.submit(onLoginSuccess) },
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !uiState.isSubmitting && uiState.consentAccepted,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(if (uiState.isSubmitting) "登录中..." else "进入 THETWO")
+                OutlinedButton(
+                    onClick = viewModel::requestCode,
+                    modifier = Modifier.weight(1f),
+                    enabled = uiState.consentAccepted && !uiState.isRequestingCode && !uiState.isVerifying,
+                ) {
+                    Text(if (uiState.isRequestingCode) "发送中..." else "发送验证码")
+                }
+                Button(
+                    onClick = { viewModel.verifyCode(onLoginSuccess) },
+                    modifier = Modifier.weight(1f),
+                    enabled = uiState.consentAccepted &&
+                        uiState.isCodeRequested &&
+                        !uiState.isVerifying &&
+                        uiState.verificationCode.isNotBlank(),
+                ) {
+                    Text(if (uiState.isVerifying) "登录中..." else "进入 THETWO")
+                }
             }
         }
     }

@@ -3,10 +3,14 @@ package com.thetwo.app.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -17,64 +21,76 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.thetwo.app.chat.ChatViewModel
 import com.thetwo.app.session.AppSessionViewModel
 
 @Composable
 fun SettingsScreen(
+    viewModel: SettingsViewModel,
     sessionViewModel: AppSessionViewModel,
     chatViewModel: ChatViewModel,
     onBack: () -> Unit,
+    onUnauthorized: () -> Unit = {},
+    onAccountDeleted: () -> Unit = {},
 ) {
-    val sessionState by remember { androidx.compose.runtime.derivedStateOf { sessionViewModel.uiState } }
-    var feedback by remember { mutableStateOf<String?>(null) }
+    val sessionState = sessionViewModel.uiState
+    val uiState = viewModel.uiState
     val companionName = sessionState.companionProfile?.nickname ?: "角色"
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(WindowInsets.safeDrawing.asPaddingValues())
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 16.dp)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(
-                text = "设置与数据",
-                style = MaterialTheme.typography.headlineMedium,
-            )
-            Text(
-                text = "这里补齐 MVP 的隐私说明、权限边界和清理入口。当前不会删除系统相册中的图片文件。",
-                style = MaterialTheme.typography.bodyMedium,
+            SettingsCard(
+                title = "设置",
+                body = "这里放当前版本最重要的清理与说明入口。",
             )
 
             SettingsCard(
-                title = "隐私与相机说明",
-                body = "召唤页使用相机画面生成截图，不做房间建模。保存截图后，App 只保留最近一次作品回流元信息，用于回到聊天时引用。",
+                title = "隐私与相机",
+                body = "召唤页会使用相机画面生成截图，不做房间建模。保存后，App 只保留最近一次召唤记录，用于回到聊天时继续衔接。",
             )
 
             SettingsCard(
-                title = "权限边界",
-                body = "当前只申请相机权限。Android 10 及以上通过 MediaStore 写入系统相册；旧版 Android 保存到应用图片目录，不申请读取媒体权限。",
+                title = "存储边界",
+                body = "当前版本不会替你删除系统相册中的图片。你在这里清除的，只是 THETWO 内部的最近召唤记录。",
             )
 
             sessionState.recentCaptureReference?.let { capture ->
                 SettingsCard(
-                    title = "最近作品回流",
-                    body = "${capture.title}\n${capture.summary}\n${capture.storageLocation}",
+                    title = capture.title,
+                    body = "${capture.summary}\n${capture.storageLocation}",
                 )
                 OutlinedButton(
                     onClick = {
-                        sessionViewModel.clearRecentCapture()
-                        chatViewModel.clearRecentCaptureReference()
-                        feedback = "已清除 App 内最近作品回流记录，不会删除系统相册文件。"
+                        viewModel.clearRecentCapture(
+                            authSession = sessionState.authSession,
+                            onSuccess = {
+                                sessionViewModel.clearRecentCapture()
+                                chatViewModel.clearRecentCaptureReference()
+                            },
+                            onUnauthorized = {
+                                sessionViewModel.clearAuthenticatedState()
+                                chatViewModel.clearRecentCaptureReference()
+                                chatViewModel.clearConversation(companionName)
+                                onUnauthorized()
+                            },
+                        )
                     },
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isWorking,
                 ) {
                     Text("清除最近作品回流")
                 }
@@ -82,33 +98,48 @@ fun SettingsScreen(
 
             OutlinedButton(
                 onClick = {
-                    chatViewModel.clearConversation(companionName)
-                    feedback = "已清空当前聊天记录，角色会从新的欢迎消息重新开始。"
+                    viewModel.clearChatHistory(
+                        authSession = sessionState.authSession,
+                        onSuccess = {
+                            chatViewModel.clearConversation(companionName)
+                        },
+                        onUnauthorized = {
+                            sessionViewModel.clearAuthenticatedState()
+                            chatViewModel.clearConversation(companionName)
+                            onUnauthorized()
+                        },
+                    )
                 },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isWorking,
             ) {
-                Text("清空聊天记录")
+                Text("清空当前聊天")
             }
 
             OutlinedButton(
                 onClick = {
-                    feedback = "账号数据删除入口已预留。MVP 下一步需要接真实后端删除接口和删除状态反馈。"
+                    viewModel.deleteAccount(
+                        authSession = sessionState.authSession,
+                        onSuccess = {
+                            sessionViewModel.clearAuthenticatedState()
+                            chatViewModel.clearRecentCaptureReference()
+                            chatViewModel.clearConversation("角色")
+                            onAccountDeleted()
+                        },
+                        onUnauthorized = {
+                            sessionViewModel.clearAuthenticatedState()
+                            chatViewModel.clearConversation(companionName)
+                            onUnauthorized()
+                        },
+                    )
                 },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isWorking,
             ) {
                 Text("账号数据删除入口")
             }
 
-            OutlinedButton(
-                onClick = {
-                    feedback = "未成年人和危机内容会切到更保守的回复模式，且不展示主动召唤邀约文案。"
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("查看安全策略说明")
-            }
-
-            feedback?.let { message ->
+            uiState.feedbackMessage?.let { message ->
                 Text(
                     text = message,
                     style = MaterialTheme.typography.bodyMedium,
@@ -116,13 +147,14 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
             Button(
                 onClick = onBack,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("返回聊天")
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }
@@ -134,12 +166,21 @@ private fun SettingsCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(text = body, style = MaterialTheme.typography.bodyMedium)
+        Column(modifier = Modifier.padding(18.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
