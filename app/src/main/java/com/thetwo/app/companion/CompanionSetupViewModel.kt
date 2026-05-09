@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.thetwo.app.analytics.AnalyticsEvents
+import com.thetwo.app.analytics.AnalyticsTracker
 import com.thetwo.app.network.ApiException
 import com.thetwo.app.network.CompanionRepository
 import com.thetwo.app.network.AuthSession
@@ -15,6 +17,7 @@ import kotlinx.coroutines.launch
 
 class CompanionSetupViewModel(
     private val repository: CompanionRepository,
+    private val analyticsTracker: AnalyticsTracker,
 ) : ViewModel() {
     var uiState by mutableStateOf(CompanionSetupUiState())
         private set
@@ -55,6 +58,14 @@ class CompanionSetupViewModel(
                     profile = profile,
                 )
             }.onSuccess { savedProfile ->
+                analyticsTracker.track(
+                    event = AnalyticsEvents.COMPANION_PROFILE_SAVED,
+                    properties = mapOf(
+                        "userId" to authSession.userId,
+                        "screen" to "companion_setup",
+                        "result" to "success",
+                    ),
+                )
                 uiState = uiState.copy(isSaving = false)
                 onSuccess(savedProfile)
             }.onFailure { error ->
@@ -86,9 +97,15 @@ class CompanionSetupViewModel(
     }
 
     companion object {
-        fun factory(repository: CompanionRepository): ViewModelProvider.Factory = viewModelFactory {
+        fun factory(
+            repository: CompanionRepository,
+            analyticsTracker: AnalyticsTracker,
+        ): ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                CompanionSetupViewModel(repository = repository)
+                CompanionSetupViewModel(
+                    repository = repository,
+                    analyticsTracker = analyticsTracker,
+                )
             }
         }
     }

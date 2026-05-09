@@ -65,10 +65,7 @@ fun ChatScreen(
                     sessionViewModel.clearRecentCapture()
                 }
             },
-            onUnauthorized = {
-                sessionViewModel.clearAuthenticatedState()
-                onUnauthorized()
-            },
+            onUnauthorized = onUnauthorized,
         )
     }
 
@@ -143,10 +140,7 @@ fun ChatScreen(
                                 viewModel.retryMessage(
                                     messageId = message.id,
                                     authSession = sessionState.authSession,
-                                    onUnauthorized = {
-                                        sessionViewModel.clearAuthenticatedState()
-                                        onUnauthorized()
-                                    },
+                                    onUnauthorized = onUnauthorized,
                                 )
                             }
                         } else {
@@ -188,10 +182,7 @@ fun ChatScreen(
                         onClick = {
                             viewModel.sendMessage(
                                 authSession = sessionState.authSession,
-                                onUnauthorized = {
-                                    sessionViewModel.clearAuthenticatedState()
-                                    onUnauthorized()
-                                },
+                                onUnauthorized = onUnauthorized,
                             )
                         },
                         modifier = Modifier.fillMaxWidth(),

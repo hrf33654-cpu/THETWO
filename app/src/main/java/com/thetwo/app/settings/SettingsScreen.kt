@@ -81,12 +81,7 @@ fun SettingsScreen(
                                 sessionViewModel.clearRecentCapture()
                                 chatViewModel.clearRecentCaptureReference()
                             },
-                            onUnauthorized = {
-                                sessionViewModel.clearAuthenticatedState()
-                                chatViewModel.clearRecentCaptureReference()
-                                chatViewModel.clearConversation(companionName)
-                                onUnauthorized()
-                            },
+                            onUnauthorized = onUnauthorized,
                         )
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -103,11 +98,7 @@ fun SettingsScreen(
                         onSuccess = {
                             chatViewModel.clearConversation(companionName)
                         },
-                        onUnauthorized = {
-                            sessionViewModel.clearAuthenticatedState()
-                            chatViewModel.clearConversation(companionName)
-                            onUnauthorized()
-                        },
+                        onUnauthorized = onUnauthorized,
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -120,17 +111,8 @@ fun SettingsScreen(
                 onClick = {
                     viewModel.deleteAccount(
                         authSession = sessionState.authSession,
-                        onSuccess = {
-                            sessionViewModel.clearAuthenticatedState()
-                            chatViewModel.clearRecentCaptureReference()
-                            chatViewModel.clearConversation("角色")
-                            onAccountDeleted()
-                        },
-                        onUnauthorized = {
-                            sessionViewModel.clearAuthenticatedState()
-                            chatViewModel.clearConversation(companionName)
-                            onUnauthorized()
-                        },
+                        onSuccess = onAccountDeleted,
+                        onUnauthorized = onUnauthorized,
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),

@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.thetwo.app.analytics.AnalyticsEvents
+import com.thetwo.app.analytics.AnalyticsTracker
 import com.thetwo.app.chat.RecentCaptureReference
 import com.thetwo.app.network.ApiException
 import com.thetwo.app.network.AuthSession
@@ -16,6 +18,7 @@ import kotlinx.coroutines.launch
 
 class SummonViewModel(
     private val captureRepository: CaptureRepository,
+    private val analyticsTracker: AnalyticsTracker,
 ) : ViewModel() {
     var uiState by mutableStateOf(SummonUiState())
         private set
@@ -48,6 +51,27 @@ class SummonViewModel(
         uiState = uiState.copy(statusMessage = message)
     }
 
+    fun trackSummonOpened(authSession: AuthSession?) {
+        analyticsTracker.track(
+            event = AnalyticsEvents.SUMMON_OPENED,
+            properties = buildMap {
+                put("screen", "summon")
+                authSession?.userId?.let { put("userId", it) }
+            },
+        )
+    }
+
+    fun trackLocalCaptureSaved(authSession: AuthSession?) {
+        analyticsTracker.track(
+            event = AnalyticsEvents.CAPTURE_SAVED_LOCAL,
+            properties = buildMap {
+                put("screen", "summon")
+                put("result", "success")
+                authSession?.userId?.let { put("userId", it) }
+            },
+        )
+    }
+
     fun syncRecentCapture(
         authSession: AuthSession?,
         reference: RecentCaptureReference,
@@ -69,6 +93,14 @@ class SummonViewModel(
             runCatching {
                 captureRepository.saveRecentCapture(session.sessionToken, reference)
             }.onSuccess { savedReference ->
+                analyticsTracker.track(
+                    event = AnalyticsEvents.CAPTURE_SYNC_SUCCESS,
+                    properties = mapOf(
+                        "userId" to session.userId,
+                        "screen" to "summon",
+                        "result" to "success",
+                    ),
+                )
                 uiState = uiState.copy(
                     isSavingCapture = false,
                     pendingRecentCapture = null,
@@ -80,6 +112,15 @@ class SummonViewModel(
                     uiState = uiState.copy(isSavingCapture = false)
                     onUnauthorized()
                 } else {
+                    analyticsTracker.track(
+                        event = AnalyticsEvents.CAPTURE_SYNC_FAILED,
+                        properties = mapOf(
+                            "userId" to session.userId,
+                            "screen" to "summon",
+                            "result" to "failed",
+                            "errorCode" to error.toAnalyticsErrorCode(),
+                        ),
+                    )
                     uiState = uiState.copy(
                         isSavingCapture = false,
                         pendingRecentCapture = reference,
@@ -91,10 +132,24 @@ class SummonViewModel(
     }
 
     companion object {
-        fun factory(captureRepository: CaptureRepository): ViewModelProvider.Factory = viewModelFactory {
+        fun factory(
+            captureRepository: CaptureRepository,
+            analyticsTracker: AnalyticsTracker,
+        ): ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                SummonViewModel(captureRepository = captureRepository)
+                SummonViewModel(
+                    captureRepository = captureRepository,
+                    analyticsTracker = analyticsTracker,
+                )
             }
         }
+    }
+}
+
+private fun Throwable.toAnalyticsErrorCode(): String {
+    return if (this is ApiException) {
+        errorCode
+    } else {
+        javaClass.simpleName.ifBlank { "UNKNOWN_ERROR" }
     }
 }

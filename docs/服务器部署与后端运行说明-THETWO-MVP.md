@@ -2,9 +2,9 @@
 
 ## 文档信息
 
-- 文档版本：`v0.2`
+- 文档版本：`v0.3`
 - 文档状态：`In Progress`
-- 更新时间：`2026-05-08`
+- 更新时间：`2026-05-09`
 - 关联后端目录：`backend/`
 
 ## 1. 文档目的
@@ -61,6 +61,16 @@ npm run build
 pm2 start dist/index.js --name thetwo-backend
 ```
 
+当前实际托管说明：
+
+- `pm2` 当前运行在 `root` 用户下
+- 建议使用以下命令排查：
+
+```bash
+sudo env PM2_HOME=/root/.pm2 pm2 status
+sudo env PM2_HOME=/root/.pm2 pm2 logs thetwo-backend --lines 100
+```
+
 ### 4.3 持久化与自启
 
 当前已执行：
@@ -75,7 +85,7 @@ pm2 startup
 ### 5.1 进程状态
 
 ```bash
-pm2 status
+sudo env PM2_HOME=/root/.pm2 pm2 status
 ```
 
 预期状态：
@@ -106,6 +116,22 @@ curl http://111.231.14.253/health
 - 两条命令都返回与后端一致的健康检查 JSON
 - `http://111.231.14.253/` 返回 `THETWO gateway`
 
+### 5.4 真实 LLM 联调验证
+
+当前已完成：
+
+- 服务器 `.env` 已配置：
+  - `LLM_BASE_URL`
+  - `LLM_API_KEY`
+  - `LLM_MODEL`
+  - `LLM_TIMEOUT_MS`
+- 已通过全新测试账号验证：
+  - `POST /auth/request-code`
+  - `POST /auth/verify-code`
+  - `PUT /me/companion-profile`
+  - `POST /chat/send`
+- `/chat/send` 已返回真实模型回复，不再返回旧占位文案
+
 ## 6. 当前后端接口范围
 
 已实现接口：
@@ -130,13 +156,13 @@ curl http://111.231.14.253/health
 
 - 开发验证码
 - 真实 LLM 调用链路
+- 真实 LLM 线上环境变量配置与公网联调
 - SQLite 本地库
 - `pm2` 常驻
 
 当前未实现：
 
 - 真实邮件验证码发送
-- 真实模型服务的线上环境变量配置与公网联调
 - 域名
 - HTTPS
 
@@ -176,5 +202,5 @@ curl http://111.231.14.253/health
 4. 从 SQLite 迁移到 PostgreSQL
 5. 数据库备份策略
 6. 真实邮件服务接入
-7. 配置 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL / LLM_TIMEOUT_MS`
-8. 完成公网真模型联调与真机回归
+7. 将 `pm2` 托管用户从 `root` 统一迁移到 `ubuntu`
+8. 完成公网真机持续回归与故障日志整理

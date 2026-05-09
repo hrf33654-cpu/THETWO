@@ -1,7 +1,7 @@
 package com.thetwo.app.chat
 
+import com.thetwo.app.analytics.NoOpAnalyticsTracker
 import com.thetwo.app.companion.CompanionProfile
-import com.thetwo.app.network.AccountRepository
 import com.thetwo.app.network.CaptureRepository
 import com.thetwo.app.network.ChatRepository
 import com.thetwo.app.network.CompanionRepository
@@ -47,6 +47,7 @@ class ChatViewModelTest {
 
             override suspend fun clearRecentCapture(sessionToken: String) = Unit
         },
+        analyticsTracker = NoOpAnalyticsTracker(),
     )
 
     @Test

@@ -25,6 +25,7 @@ data class RequestCodeResult(
 interface AuthRepository {
     suspend fun requestCode(email: String): RequestCodeResult
     suspend fun verifyCode(email: String, code: String): AuthSession
+    suspend fun getCurrentSession(sessionToken: String): AuthSession
 }
 
 interface CompanionRepository {
@@ -67,6 +68,10 @@ class RemoteAuthRepository(
                 code = code,
             ),
         ).requireData(gson)
+    }
+
+    override suspend fun getCurrentSession(sessionToken: String): AuthSession {
+        return api.getCurrentSession(sessionToken.bearer()).requireData(gson)
     }
 }
 
@@ -185,6 +190,16 @@ class MockAuthRepository : AuthRepository {
             userId = "mock-user",
             email = email.trim(),
             sessionToken = "mock-session-token",
+            profileCompleted = false,
+        )
+    }
+
+    override suspend fun getCurrentSession(sessionToken: String): AuthSession {
+        delay(150)
+        return AuthSession(
+            userId = "mock-user",
+            email = "user@example.com",
+            sessionToken = sessionToken,
             profileCompleted = false,
         )
     }

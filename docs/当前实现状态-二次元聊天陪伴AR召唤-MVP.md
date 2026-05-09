@@ -2,9 +2,9 @@
 
 ## 文档信息
 
-- 文档版本：`v0.5`
+- 文档版本：`v0.7`
 - 文档状态：`In Progress`
-- 更新时间：`2026-05-08`
+- 更新时间：`2026-05-09`
 - 关联 PRD：`PRD-二次元空间陪伴App-MVP.md`
 - 关联开发流程：`开发流程文档-二次元聊天陪伴AR召唤-MVP.md`
 - 关联技术设计：`技术设计文档-二次元聊天陪伴AR召唤-MVP.md`
@@ -28,21 +28,22 @@
 - 登录、创角、聊天、设置治理入口已接入真后端 Debug 联调
 - fallback 召唤、截图保存、最近作品回流已具备可演示能力
 - 后端第一阶段服务、服务器部署与 Android 客户端真后端联调已完成
+- 真实 LLM 已完成服务器环境配置、公网联调与 Android 实机验证
+- `P1` 第一阶段已开始落地：会话本地持久化、冷启动恢复、统一 401 清理、最小埋点骨架已接入代码
 - AR 产品与技术路线已从 Google ARCore 调整为 `EasyAR Sense`，但代码层尚未接入 EasyAR SDK
 
 当前工程尚未达到：
 
-- `P0` 真实 LLM 线上配置与公网联调验收未完成
-- `P1` 会话持久化、埋点与 Alpha 稳定性尚未系统落地
+- `P1` Alpha 真机回归、设备矩阵与已知问题清单尚未完成
 - `P2` EasyAR 真 AR 主路径未完成
 - `P2` 真 3D 角色资产接入未完成
 - `真实邮件验证码` 未完成
-- `真实模型服务` 代码已接入，尚未完成线上环境配置与联调验收
+- `真实模型服务` 已跑通单模型联调，但流式输出、摘要/记忆与更强安全策略尚未完成
 - `Release 版正式 HTTPS / 域名联调` 未完成
 
 一句话总结：
 
-当前版本是 `聊天主闭环 + fallback 召唤闭环 + 真后端 Debug 联调版`，但还不是 `PRD 完整目标版`。
+当前版本是 `聊天主闭环 + fallback 召唤闭环 + 真后端 + 真 LLM Debug 联调版`，并且已进入 `P1 Alpha 稳定化`，但还不是 `PRD 完整目标版`。
 
 ## 3. 已经实现的内容
 
@@ -78,7 +79,7 @@
 当前限制：
 
 - 仍是开发验证码，不是真实邮件验证码
-- `sessionToken` 只保存在内存态，不做本地持久化
+- 登录态已做本地持久化，但仍是开发验证码，不是真实邮件验证码
 
 ### 3.3 创角
 
@@ -127,11 +128,13 @@
   - 读取最近作品回流
   - 读取最近聊天上下文
   - 组装 OpenAI 兼容 `chat/completions` 请求
+- 服务器 `.env` 已配置 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL / LLM_TIMEOUT_MS`
+- 已通过全新测试账号验证：公网 `POST /chat/send` 返回真实模型回复，不再返回旧占位文案
 
 当前限制：
 
-- 真实模型服务仍依赖 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL` 的线上配置
 - 未接流式输出
+- 未接会话摘要与正式长期记忆
 
 ### 3.5 安全模式
 
@@ -160,6 +163,8 @@
 - 当前角色资料
 - 最近作品回流引用
 - AR/相机隐私说明确认状态
+- 启动恢复页 `Launch`
+- `Preferences DataStore` 本地持久化
 
 当前实现方式：
 
@@ -169,11 +174,14 @@
   - `companionProfile`
   - `recentCaptureReference`
   - `arPrivacyAccepted`
+- 使用 `SessionLocalStore + PersistedSessionState`
+- 冷启动时先读取本地状态，再调用 `GET /me` 做远端强校验
+- 若遇到 `401 / UNAUTHORIZED`，统一清本地账号态并回登录页
 
 当前限制：
 
-- 仍以内存态为主
-- 重启应用后需要重新登录
+- 聊天历史仍不落本地，重启后依旧从远端重新拉取
+- `arPrivacyAccepted` 会保留本地状态，不跟随账号清理
 
 ### 3.7 召唤页 fallback 主路径
 
@@ -259,10 +267,13 @@
 - Debug 专用 `network_security_config`
 - `BuildConfig.API_BASE_URL`
 - `AppContainer` 手动依赖注入
+- `LaunchViewModel` 冷启动恢复
+- `AnalyticsTracker + DebugAnalyticsTracker`
 
 当前实现方式：
 
 - Debug 版 `API_BASE_URL = http://111.231.14.253/`
+- 已通过 Android 实机验证该公网入口可完成登录、创角与聊天主链路
 - Release 版保留 HTTPS 占位，不允许当前明文 IP 策略进入正式发布链路
 
 当前限制：
@@ -270,7 +281,38 @@
 - 还没有正式域名
 - 还没有 Release 可用的 HTTPS 接口
 
-### 3.11 后端第一阶段
+### 3.11 最小埋点骨架
+
+已实现：
+
+- `AnalyticsTracker` 统一接口
+- Debug 下 `DebugAnalyticsTracker` 输出本地日志
+- 已接入的关键事件：
+  - `login_request_code_success`
+  - `login_verify_success`
+  - `companion_profile_saved`
+  - `chat_send_success`
+  - `chat_send_failed`
+  - `chat_restricted_mode_entered`
+  - `summon_opened`
+  - `capture_saved_local`
+  - `capture_sync_success`
+  - `capture_sync_failed`
+  - `chat_history_cleared`
+  - `recent_capture_cleared`
+  - `account_deleted`
+  - `session_restore_started`
+  - `session_restore_succeeded`
+  - `session_restore_failed`
+  - `session_unauthorized_cleared`
+
+当前限制：
+
+- 仅输出 Debug 本地日志
+- 未接正式分析平台
+- 尚未形成完整 Alpha 漏斗报表
+
+### 3.12 后端第一阶段
 
 已实现：
 
@@ -297,14 +339,14 @@
 - `node:sqlite` 提供 SQLite 本地库
 - 服务端当前采用开发验证码
 - `/chat/send` 已接入 OpenAI 兼容 `chat/completions` provider
-- 未配置模型环境变量时，`/chat/send` 会返回 `503 LLM_NOT_CONFIGURED`
+- 当前服务器已完成模型环境变量配置；未配置时，`/chat/send` 会返回 `503 LLM_NOT_CONFIGURED`
 
 当前限制：
 
 - 未接真实邮件服务
-- 线上模型环境尚未配置完成，未完成公网真模型联调验收
+- 尚未接入流式输出、会话摘要与正式长期记忆
 
-### 3.12 服务器部署状态
+### 3.13 服务器部署状态
 
 已实现：
 
@@ -325,6 +367,8 @@
 - 当前服务器上 PostgreSQL 已安装并可用
 - 当前后端代码实际使用的仍是 `SQLite`
 - PostgreSQL 是下一阶段可切换的正式数据库基础，不是当前运行中的主存储
+- 当前 LLM 走 OpenAI 兼容 provider，服务器已完成单模型公网联调
+- 当前 `http://111.231.14.253/health` 与公网 `/chat/send` 已验证通过
 
 当前公网联调地址：
 
@@ -339,6 +383,7 @@
 - 仍是 HTTP
 - 未接域名
 - 未接 HTTPS
+- `pm2` 当前由 `root` 用户托管，排查状态与日志需使用 `sudo env PM2_HOME=/root/.pm2 pm2 ...`
 
 ## 4. 当前未实现的内容
 

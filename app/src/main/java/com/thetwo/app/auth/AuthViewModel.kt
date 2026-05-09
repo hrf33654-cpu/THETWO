@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.thetwo.app.analytics.AnalyticsEvents
+import com.thetwo.app.analytics.AnalyticsTracker
 import com.thetwo.app.BuildConfig
 import com.thetwo.app.network.AuthRepository
 import com.thetwo.app.network.AuthSession
@@ -15,6 +17,7 @@ import kotlinx.coroutines.launch
 
 class AuthViewModel(
     private val repository: AuthRepository,
+    private val analyticsTracker: AnalyticsTracker,
 ) : ViewModel() {
     var uiState by mutableStateOf(AuthUiState())
         private set
@@ -59,6 +62,13 @@ class AuthViewModel(
             )
             runCatching { repository.requestCode(uiState.email.trim()) }
                 .onSuccess { result ->
+                    analyticsTracker.track(
+                        event = AnalyticsEvents.LOGIN_REQUEST_CODE_SUCCESS,
+                        properties = mapOf(
+                            "screen" to "login",
+                            "result" to "success",
+                        ),
+                    )
                     uiState = uiState.copy(
                         isRequestingCode = false,
                         isCodeRequested = true,
@@ -97,6 +107,14 @@ class AuthViewModel(
                     code = uiState.verificationCode.trim(),
                 )
             }.onSuccess { session ->
+                analyticsTracker.track(
+                    event = AnalyticsEvents.LOGIN_VERIFY_SUCCESS,
+                    properties = mapOf(
+                        "userId" to session.userId,
+                        "screen" to "login",
+                        "result" to "success",
+                    ),
+                )
                 uiState = uiState.copy(isVerifying = false)
                 onSuccess(session)
             }.onFailure { error ->
@@ -109,9 +127,15 @@ class AuthViewModel(
     }
 
     companion object {
-        fun factory(repository: AuthRepository): ViewModelProvider.Factory = viewModelFactory {
+        fun factory(
+            repository: AuthRepository,
+            analyticsTracker: AnalyticsTracker,
+        ): ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                AuthViewModel(repository = repository)
+                AuthViewModel(
+                    repository = repository,
+                    analyticsTracker = analyticsTracker,
+                )
             }
         }
     }

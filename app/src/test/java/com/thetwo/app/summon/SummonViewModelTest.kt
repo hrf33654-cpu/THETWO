@@ -1,5 +1,6 @@
 package com.thetwo.app.summon
 
+import com.thetwo.app.analytics.NoOpAnalyticsTracker
 import com.thetwo.app.chat.RecentCaptureReference
 import com.thetwo.app.network.CaptureRepository
 import org.junit.Assert.assertEquals
@@ -20,6 +21,7 @@ class SummonViewModelTest {
 
             override suspend fun clearRecentCapture(sessionToken: String) = Unit
         },
+        analyticsTracker = NoOpAnalyticsTracker(),
     )
 
     @Test

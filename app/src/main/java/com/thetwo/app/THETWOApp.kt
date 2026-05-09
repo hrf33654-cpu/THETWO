@@ -5,11 +5,13 @@ import androidx.compose.runtime.remember
 import androidx.navigation.compose.rememberNavController
 import com.thetwo.app.navigation.AppNavHost
 import com.thetwo.app.network.AppContainer
+import androidx.compose.ui.platform.LocalContext
 
 @Composable
 fun THETWOApp() {
     val navController = rememberNavController()
-    val appContainer = remember { AppContainer() }
+    val appContext = LocalContext.current.applicationContext
+    val appContainer = remember(appContext) { AppContainer(appContext) }
     AppNavHost(
         navController = navController,
         appContainer = appContainer,

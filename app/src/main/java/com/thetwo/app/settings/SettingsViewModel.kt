@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.thetwo.app.analytics.AnalyticsEvents
+import com.thetwo.app.analytics.AnalyticsTracker
 import com.thetwo.app.network.AccountRepository
 import com.thetwo.app.network.ApiException
 import com.thetwo.app.network.AuthSession
@@ -24,6 +26,7 @@ class SettingsViewModel(
     private val chatRepository: ChatRepository,
     private val captureRepository: CaptureRepository,
     private val accountRepository: AccountRepository,
+    private val analyticsTracker: AnalyticsTracker,
 ) : ViewModel() {
     var uiState by mutableStateOf(SettingsUiState())
         private set
@@ -43,6 +46,14 @@ class SettingsViewModel(
             uiState = uiState.copy(isWorking = true, feedbackMessage = null)
             runCatching { captureRepository.clearRecentCapture(session.sessionToken) }
                 .onSuccess {
+                    analyticsTracker.track(
+                        event = AnalyticsEvents.RECENT_CAPTURE_CLEARED,
+                        properties = mapOf(
+                            "userId" to session.userId,
+                            "screen" to "settings",
+                            "result" to "success",
+                        ),
+                    )
                     uiState = uiState.copy(
                         isWorking = false,
                         feedbackMessage = "已清除 App 内最近作品回流记录，不会删除系统相册文件。",
@@ -70,6 +81,14 @@ class SettingsViewModel(
             uiState = uiState.copy(isWorking = true, feedbackMessage = null)
             runCatching { chatRepository.clearHistory(session.sessionToken) }
                 .onSuccess {
+                    analyticsTracker.track(
+                        event = AnalyticsEvents.CHAT_HISTORY_CLEARED,
+                        properties = mapOf(
+                            "userId" to session.userId,
+                            "screen" to "settings",
+                            "result" to "success",
+                        ),
+                    )
                     uiState = uiState.copy(
                         isWorking = false,
                         feedbackMessage = "已清空远端聊天记录，本地聊天已重置为欢迎消息。",
@@ -97,6 +116,14 @@ class SettingsViewModel(
             uiState = uiState.copy(isWorking = true, feedbackMessage = null)
             runCatching { accountRepository.deleteAccount(session.sessionToken) }
                 .onSuccess {
+                    analyticsTracker.track(
+                        event = AnalyticsEvents.ACCOUNT_DELETED,
+                        properties = mapOf(
+                            "userId" to session.userId,
+                            "screen" to "settings",
+                            "result" to "success",
+                        ),
+                    )
                     uiState = uiState.copy(
                         isWorking = false,
                         feedbackMessage = "账号数据已删除，正在返回登录页。",
@@ -129,12 +156,14 @@ class SettingsViewModel(
             chatRepository: ChatRepository,
             captureRepository: CaptureRepository,
             accountRepository: AccountRepository,
+            analyticsTracker: AnalyticsTracker,
         ): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 SettingsViewModel(
                     chatRepository = chatRepository,
                     captureRepository = captureRepository,
                     accountRepository = accountRepository,
+                    analyticsTracker = analyticsTracker,
                 )
             }
         }

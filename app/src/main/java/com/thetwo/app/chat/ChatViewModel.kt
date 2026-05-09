@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.thetwo.app.analytics.AnalyticsEvents
+import com.thetwo.app.analytics.AnalyticsTracker
 import com.thetwo.app.companion.CompanionProfile
 import com.thetwo.app.network.ApiException
 import com.thetwo.app.network.AuthSession
@@ -23,6 +25,7 @@ class ChatViewModel(
     private val chatRepository: ChatRepository,
     private val companionRepository: CompanionRepository,
     private val captureRepository: CaptureRepository,
+    private val analyticsTracker: AnalyticsTracker,
 ) : ViewModel() {
     var uiState by mutableStateOf(
         ChatUiState(
@@ -165,6 +168,25 @@ class ChatViewModel(
                     isRestrictedMode = reply.mode == RemoteChatMode.RESTRICTED,
                     messages = updatedMessages + companionMessage,
                 )
+                analyticsTracker.track(
+                    event = AnalyticsEvents.CHAT_SEND_SUCCESS,
+                    properties = mapOf(
+                        "userId" to session.userId,
+                        "screen" to "chat",
+                        "result" to "success",
+                        "mode" to reply.mode.name,
+                    ),
+                )
+                if (reply.mode == RemoteChatMode.RESTRICTED) {
+                    analyticsTracker.track(
+                        event = AnalyticsEvents.CHAT_RESTRICTED_MODE_ENTERED,
+                        properties = mapOf(
+                            "userId" to session.userId,
+                            "screen" to "chat",
+                            "mode" to reply.mode.name,
+                        ),
+                    )
+                }
             }.onFailure { error ->
                 if (error is ApiException && error.isUnauthorized) {
                     resetSessionState()
@@ -176,6 +198,15 @@ class ChatViewModel(
                         messages = uiState.messages.markMessageStatus(
                             messageId = clientMessageId,
                             status = MessageStatus.FAILED,
+                        ),
+                    )
+                    analyticsTracker.track(
+                        event = AnalyticsEvents.CHAT_SEND_FAILED,
+                        properties = mapOf(
+                            "userId" to session.userId,
+                            "screen" to "chat",
+                            "result" to "failed",
+                            "errorCode" to error.toAnalyticsErrorCode(),
                         ),
                     )
                 }
@@ -247,12 +278,14 @@ class ChatViewModel(
             chatRepository: ChatRepository,
             companionRepository: CompanionRepository,
             captureRepository: CaptureRepository,
+            analyticsTracker: AnalyticsTracker,
         ): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 ChatViewModel(
                     chatRepository = chatRepository,
                     companionRepository = companionRepository,
                     captureRepository = captureRepository,
+                    analyticsTracker = analyticsTracker,
                 )
             }
         }
@@ -290,4 +323,12 @@ private fun toLocalMessage(remoteMessage: RemoteChatMessage): ChatMessage {
         status = MessageStatus.SENT,
         mode = remoteMessage.mode,
     )
+}
+
+private fun Throwable.toAnalyticsErrorCode(): String {
+    return if (this is ApiException) {
+        errorCode
+    } else {
+        javaClass.simpleName.ifBlank { "UNKNOWN_ERROR" }
+    }
 }

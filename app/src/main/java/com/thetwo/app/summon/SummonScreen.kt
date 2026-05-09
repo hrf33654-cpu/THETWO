@@ -133,6 +133,10 @@ fun SummonScreen(
         }
     }
 
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.trackSummonOpened(sessionState.authSession)
+    }
+
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -331,6 +335,9 @@ fun SummonScreen(
                             }
                             saveResult
                                 .onSuccess { location ->
+                                    viewModel.trackLocalCaptureSaved(
+                                        authSession = sessionState.authSession,
+                                    )
                                     captureCount += 1
                                     val reference = RecentCaptureReference(
                                         title = "最近一次召唤 #$captureCount",

@@ -2,9 +2,9 @@
 
 ## 文档信息
 
-- 文档版本：`v0.4`
+- 文档版本：`v0.6`
 - 文档状态：`In Progress`
-- 更新时间：`2026-05-08`
+- 更新时间：`2026-05-09`
 - 关联 PRD：`PRD-二次元空间陪伴App-MVP.md`
 - 技术阶段：`MVP`
 - 客户端平台：`Android 原生`
@@ -33,8 +33,8 @@
   - 运行时模型格式：`glTF / GLB`
   - 渲染方案：`Filament` 或基于 Filament 的轻量封装
 - 本地存储：
-  - `Room`：聊天摘要、最近作品元信息、最近召唤上下文
-  - `DataStore`：轻配置、开关、权限引导状态
+  - `Room`：后续阶段如需本地聊天摘要或更复杂缓存时再引入
+  - `DataStore`：当前已用于会话持久化、最近作品回流引用与权限说明状态
 - 网络：
   - 客户端：`Retrofit + OkHttp`
   - 后端：`Node + TypeScript + Express`
@@ -180,7 +180,8 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 - 开发验证码
 - 真实 LLM 调用链路已接入
 - OpenAI 兼容 `chat/completions` provider
-- 线上仍需补 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL` 配置与联调
+- 当前服务器已完成 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL / LLM_TIMEOUT_MS` 配置
+- 已通过公网接口与 Android 实机验证真实模型回复可达
 
 ### 5.3 Prompt 结构
 
@@ -207,6 +208,7 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 - 当前实现补充：
   - 模型失败、超时、空回复时，`/chat/send` 直接返回失败，不回退为伪成功文案
   - 模型成功后才写入用户消息与助手消息，避免失败重试产生脏历史
+  - 服务器已完成最新源码重部署与重新编译，旧占位回复不再作为当前运行产物
 
 ## 6. 云端存储方案
 
@@ -222,8 +224,15 @@ MVP 后端最少承接以下职责，当前第一阶段最小服务已落地：
 
 当前实现修正：
 
-- 当前阶段不优先做 `Room / DataStore` 本地持久化
-- 当前阶段优先把 Android 客户端切到真后端接口
+- 当前阶段已落地 `Preferences DataStore`，仅持久化：
+  - `sessionToken`
+  - `email`
+  - `profileCompleted`
+  - `companionProfile`
+  - `recentCaptureReference`
+  - `arPrivacyAccepted`
+- 当前阶段不做本地聊天历史缓存，不引入 `Room`
+- 当前阶段数据库主存储仍为 `SQLite`，`PostgreSQL` 保持为下一阶段迁移目标
 
 ### 6.2 不建议首版云端化的内容
 
