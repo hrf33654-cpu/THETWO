@@ -284,6 +284,11 @@ Authorization: Bearer <sessionToken>
 - `CHAT_SEND_FAILED`：消息为空。
 - `PROFILE_REQUIRED`：当前用户还没有角色资料，无法生成回复。
 - `LLM_NOT_CONFIGURED`：模型环境变量未配置完成。
+- `LLM_AUTH_FAILED`：模型供应商鉴权失败，通常是 `LLM_API_KEY`、套餐权限或供应商绑定问题。
+- `LLM_RATE_LIMITED`：模型供应商返回额度、余额或速率限制。
+- `LLM_MODEL_NOT_FOUND`：`LLM_MODEL` 不存在，或当前供应商/套餐不支持该模型。
+- `LLM_NETWORK_ERROR`：后端无法连通模型供应商地址，需检查 `LLM_BASE_URL`、DNS、代理或服务器网络。
+- `LLM_UPSTREAM_UNAVAILABLE`：模型供应商临时不可用。
 - `LLM_TIMEOUT`：模型响应超时。
 - `LLM_UPSTREAM_FAILED`：模型上游返回非 2xx。
 - `LLM_EMPTY_REPLY`：模型未返回有效文本。
@@ -342,6 +347,10 @@ Authorization: Bearer <sessionToken>
 删除语义：
 
 - 删除后端 `chat_messages` 中当前用户的所有消息。
+- 同时清空服务端派生状态：
+  - `chat_summaries`
+  - `memory_states`
+  - `safety_states`
 - 不删除用户账号、角色资料或最近作品回流。
 
 ## 8. Capture
@@ -418,13 +427,18 @@ Authorization: Bearer <sessionToken>
 
 ## 9. Memory 预留
 
-当前没有独立 memory API。
+当前没有独立 memory API，也没有客户端可见记忆接口。
 
 下一阶段建议：
 
-- 先在 `POST /chat/send` 内部使用最近聊天历史、角色资料和最近作品回流组装上下文。
-- 如需持久会话摘要，可新增 `ChatSummary` 或 `MemoryState` 服务端模型。
-- 不建议 Android 客户端直接写长期记忆，避免前后端状态分裂。
+- 当前服务端代码已在 `POST /chat/send` 内部使用：
+  - 最近聊天历史
+  - 角色资料
+  - 最近作品回流
+  - 滚动会话摘要
+  - 轻量隐式记忆
+  - 短时安全状态
+- Android 客户端不直接读取或写入长期记忆，避免前后端状态分裂。
 
 ## 10. Streaming 预留
 

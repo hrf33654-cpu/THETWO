@@ -47,7 +47,7 @@ fun LoginScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "当前先接开发验证码登录。流程会固定成两步：先发送验证码，再验证进入 THETWO。",
+                text = "登录流程固定为两步：先发送验证码，再验证进入 THETWO。若服务器已配置邮件服务，验证码会发送到邮箱；开发模式下会显示调试验证码提示。",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(modifier = Modifier.height(24.dp))
@@ -64,7 +64,7 @@ fun LoginScreen(
                 onValueChange = viewModel::updateVerificationCode,
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("验证码") },
-                supportingText = { Text("开发期会在发送验证码后展示调试验证码提示。") },
+                supportingText = { Text("若服务器处于开发模式，会在发送验证码后展示调试验证码提示。") },
                 singleLine = true,
             )
             Spacer(modifier = Modifier.height(16.dp))

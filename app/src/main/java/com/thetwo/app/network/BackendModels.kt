@@ -5,6 +5,7 @@ data class ApiEnvelope<T>(
     val data: T?,
     val errorCode: String?,
     val message: String,
+    val details: Map<String, Any?>? = null,
 )
 
 data class RequestCodeRequest(
@@ -14,6 +15,7 @@ data class RequestCodeRequest(
 data class RequestCodeData(
     val email: String,
     val devCode: String?,
+    val deliveryMode: String,
 )
 
 data class VerifyCodeRequest(

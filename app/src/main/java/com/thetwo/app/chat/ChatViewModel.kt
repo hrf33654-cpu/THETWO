@@ -18,6 +18,7 @@ import com.thetwo.app.network.ChatRepository
 import com.thetwo.app.network.CompanionRepository
 import com.thetwo.app.network.RemoteChatMessage
 import com.thetwo.app.network.RemoteChatMode
+import com.thetwo.app.network.toUserFacingMessage
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -79,7 +80,7 @@ class ChatViewModel(
                     handleBootstrapFailure(error, onUnauthorized)
                     return@launch
                 }
-                historyError = error.message ?: "聊天历史加载失败。"
+                historyError = error.toUserFacingMessage("聊天历史加载失败。")
                 emptyList()
             }
 
@@ -90,7 +91,7 @@ class ChatViewModel(
                     handleBootstrapFailure(error, onUnauthorized)
                     return@launch
                 }
-                historyError = historyError ?: (error.message ?: "最近作品回流加载失败。")
+                historyError = historyError ?: error.toUserFacingMessage("最近作品回流加载失败。")
                 null
             }
 
@@ -194,7 +195,7 @@ class ChatViewModel(
                 } else {
                     uiState = uiState.copy(
                         isReplying = false,
-                        errorMessage = error.message ?: "发送失败，请稍后重试。",
+                        errorMessage = error.toUserFacingMessage("消息发送失败，请稍后重试。"),
                         messages = uiState.messages.markMessageStatus(
                             messageId = clientMessageId,
                             status = MessageStatus.FAILED,
@@ -268,7 +269,7 @@ class ChatViewModel(
         } else {
             uiState = uiState.copy(
                 isInitializing = false,
-                errorMessage = error.message ?: "远端会话加载失败。",
+                errorMessage = error.toUserFacingMessage("聊天初始化失败，请稍后重试。"),
             )
         }
     }
@@ -310,7 +311,7 @@ private fun defaultWelcomeMessages(companionName: String = "角色"): List<ChatM
         ChatMessage(
             id = "welcome",
             author = MessageAuthor.COMPANION,
-            content = "欢迎回来。$companionName 会先把聊天作为主闭环，召唤页作为增强入口继续接入。",
+            content = "欢迎回来。$companionName 会先在聊天里陪你，如果你想见我，也可以随时从上方进入召唤页。",
         ),
     )
 }

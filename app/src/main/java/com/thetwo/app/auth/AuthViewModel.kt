@@ -13,6 +13,7 @@ import com.thetwo.app.analytics.AnalyticsTracker
 import com.thetwo.app.BuildConfig
 import com.thetwo.app.network.AuthRepository
 import com.thetwo.app.network.AuthSession
+import com.thetwo.app.network.toUserFacingMessage
 import kotlinx.coroutines.launch
 
 class AuthViewModel(
@@ -79,7 +80,7 @@ class AuthViewModel(
                 .onFailure { error ->
                     uiState = uiState.copy(
                         isRequestingCode = false,
-                        errorMessage = error.message,
+                        errorMessage = error.toUserFacingMessage("验证码请求失败，请稍后重试。"),
                     )
                 }
         }
@@ -120,7 +121,7 @@ class AuthViewModel(
             }.onFailure { error ->
                 uiState = uiState.copy(
                     isVerifying = false,
-                    errorMessage = error.message,
+                    errorMessage = error.toUserFacingMessage("验证失败，请稍后重试。"),
                 )
             }
         }

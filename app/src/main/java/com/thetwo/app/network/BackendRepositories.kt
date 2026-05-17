@@ -7,6 +7,9 @@ import com.thetwo.app.chat.RecentCaptureReference
 import com.thetwo.app.companion.CompanionProfile
 import kotlinx.coroutines.delay
 import retrofit2.Response
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 class ApiException(
     val errorCode: String,
@@ -56,7 +59,11 @@ class RemoteAuthRepository(
     override suspend fun requestCode(email: String): RequestCodeResult {
         val data = api.requestCode(RequestCodeRequest(email = email)).requireData(gson)
         return RequestCodeResult(
-            message = "验证码已发送，请查看下方提示后继续验证。",
+            message = if (data.deliveryMode == "SMTP") {
+                "验证码已发送到邮箱，请查收后继续验证。"
+            } else {
+                "开发验证码已生成，请查看下方提示后继续验证。"
+            },
             debugCodeHint = data.devCode,
         )
     }
@@ -319,4 +326,39 @@ private fun <T> Response<ApiEnvelope<T>>.requireData(gson: Gson): T {
         message = payload?.message ?: "请求失败，请稍后重试。",
         statusCode = code(),
     )
+}
+
+fun Throwable.toUserFacingMessage(defaultMessage: String): String {
+    if (this is ApiException) {
+        return when {
+            errorCode.equals("LLM_NOT_CONFIGURED", ignoreCase = true) ->
+                "聊天模型还没有配置完成，请先检查后端 LLM 环境变量。"
+            errorCode.equals("LLM_AUTH_FAILED", ignoreCase = true) ->
+                "聊天模型鉴权失败，请检查 API Key、账号权限或套餐绑定。"
+            errorCode.equals("LLM_RATE_LIMITED", ignoreCase = true) ||
+                errorCode.contains("limit", ignoreCase = true) ||
+                message.contains("usage limit exceeded", ignoreCase = true) ||
+                message.contains("rate limit", ignoreCase = true) ->
+                "聊天模型当前被额度或频率限制住了，请稍后再试，或先检查供应商套餐和余额。"
+            errorCode.equals("LLM_MODEL_NOT_FOUND", ignoreCase = true) ->
+                "聊天模型名称无效或当前套餐不支持这个模型，请检查后端的 LLM_MODEL 配置。"
+            errorCode.equals("LLM_NETWORK_ERROR", ignoreCase = true) ->
+                "后端暂时连不上模型服务，请检查 LLM_BASE_URL、网络或代理配置。"
+            errorCode.equals("LLM_UPSTREAM_UNAVAILABLE", ignoreCase = true) ->
+                "聊天模型服务暂时不可用，请稍后重试。"
+            errorCode.equals("LLM_TIMEOUT", ignoreCase = true) ->
+                "聊天模型响应超时了，请稍后再试。"
+            message.isNotBlank() ->
+                message
+            else ->
+                defaultMessage
+        }
+    }
+    return when (this) {
+        is ConnectException -> "网络连接失败，请检查网络后重试"
+        is SocketTimeoutException -> "连接超时，请检查网络后重试"
+        is UnknownHostException -> "无法连接服务器，请检查网络设置"
+        is java.io.IOException -> "网络异常，请稍后重试"
+        else -> message?.takeIf { it.isNotBlank() } ?: defaultMessage
+    }
 }

@@ -13,6 +13,7 @@ import com.thetwo.app.analytics.AnalyticsTracker
 import com.thetwo.app.network.ApiException
 import com.thetwo.app.network.CompanionRepository
 import com.thetwo.app.network.AuthSession
+import com.thetwo.app.network.toUserFacingMessage
 import kotlinx.coroutines.launch
 
 class CompanionSetupViewModel(
@@ -75,7 +76,7 @@ class CompanionSetupViewModel(
                 } else {
                     uiState = uiState.copy(
                         isSaving = false,
-                        errorMessage = error.message ?: "角色资料保存失败，请稍后重试。",
+                        errorMessage = error.toUserFacingMessage("角色资料保存失败，请稍后重试。"),
                     )
                 }
             }

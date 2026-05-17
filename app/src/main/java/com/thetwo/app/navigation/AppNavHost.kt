@@ -60,6 +60,12 @@ fun AppNavHost(
         navigateToRoot(AppDestination.Login)
     }
 
+    fun handleLogout() {
+        sessionViewModel.clearAuthenticatedState()
+        chatViewModel.resetSessionState()
+        navigateToRoot(AppDestination.Login)
+    }
+
     fun handleAccountDeleted() {
         sessionViewModel.clearAuthenticatedState()
         chatViewModel.resetSessionState()
@@ -181,6 +187,7 @@ fun AppNavHost(
                 chatViewModel = chatViewModel,
                 onBack = { navController.popBackStack() },
                 onUnauthorized = { handleUnauthorized("settings") },
+                onLogout = ::handleLogout,
                 onAccountDeleted = ::handleAccountDeleted,
             )
         }

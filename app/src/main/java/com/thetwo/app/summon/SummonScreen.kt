@@ -1,7 +1,7 @@
 package com.thetwo.app.summon
 
 import android.Manifest
-import android.content.Intent
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -9,7 +9,6 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
-import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -62,12 +62,15 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.view.SurfaceView
+import android.view.TextureView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.thetwo.app.R
 import com.thetwo.app.chat.ChatViewModel
 import com.thetwo.app.chat.RecentCaptureReference
 import com.thetwo.app.media.BitmapSaver
+import com.thetwo.app.network.toUserFacingMessage
 import com.thetwo.app.session.AppSessionViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -87,8 +90,12 @@ fun SummonScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val companionName = sessionState.companionProfile?.nickname ?: "飞樱"
-    val hasCameraPermission = rememberCameraPermission()
+    val companionName = sessionState.companionProfile?.nickname ?: "THETWO"
+    val easyArEngine = remember { ReflectionEasyArEngine() }
+    val characterAssetManifest = remember(context) { CharacterAssetSelector.resolve(context) }
+    var hasCameraPermission by remember {
+        mutableStateOf(isCameraPermissionGranted(context))
+    }
     val cameraController = remember(context) {
         LifecycleCameraController(context).apply {
             cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
@@ -99,21 +106,46 @@ fun SummonScreen(
     var offsetX by rememberSaveable { mutableStateOf(0f) }
     var offsetY by rememberSaveable { mutableStateOf(0f) }
     var scale by rememberSaveable { mutableStateOf(1f) }
-    var rotation by rememberSaveable { mutableStateOf(0f) }
+    var rotationYDegrees by rememberSaveable { mutableStateOf(0f) }
     var captureCount by rememberSaveable { mutableIntStateOf(0) }
+    val transformState = CharacterTransformState(
+        offsetX = offsetX,
+        offsetY = offsetY,
+        scale = scale,
+        rotationYDegrees = rotationYDegrees,
+    )
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
         if (granted) {
+            hasCameraPermission = true
             viewModel.showCameraPreviewFallback()
+            viewModel.setStatusMessage("Camera permission granted. Preview fallback is ready.")
         } else {
+            hasCameraPermission = false
             viewModel.showScreenOnlyFallback()
-            viewModel.setStatusMessage("未授予相机权限，已回退到纯屏模式。")
+            viewModel.setStatusMessage("Camera permission denied. Using screen-only fallback.")
         }
     }
 
-    val arServicesInstalled = remember(context) { isPackageInstalled(context.packageManager, "com.google.ar.core") }
+    val easyArAvailability = remember {
+        when {
+            EasyArSdkLocator.hasArchiveOnly() && !easyArEngine.isRuntimeAvailable() -> EasyArAvailability.ARCHIVE_ONLY
+            !easyArEngine.isRuntimeAvailable() -> EasyArAvailability.NOT_BUNDLED
+            !EasyArInitializer.hasLicenseKey() -> EasyArAvailability.LICENSE_MISSING
+            easyArEngine.canStartImageTracking() -> EasyArAvailability.READY_FOR_TRACKING
+            else -> EasyArAvailability.NOT_BUNDLED
+        }
+    }
+
+    val easyArSession = remember { EasyArSession(context) }
+    var easyArTextureView by remember { mutableStateOf<TextureView?>(null) }
+    var easyArStarted by remember { mutableStateOf(false) }
+
+    LaunchedEffect(characterAssetManifest) {
+        viewModel.setCharacterAssetManifest(characterAssetManifest)
+    }
 
     DisposableEffect(lifecycleOwner, hasCameraPermission) {
         if (hasCameraPermission) {
@@ -121,20 +153,48 @@ fun SummonScreen(
         }
         onDispose {
             cameraController.unbind()
+            easyArSession.stop()
+            easyArStarted = false
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(sessionState.arPrivacyAccepted, hasCameraPermission, arServicesInstalled) {
-        viewModel.setArServicesInstalled(arServicesInstalled)
+    LaunchedEffect(sessionState.arPrivacyAccepted, hasCameraPermission, easyArAvailability) {
+        viewModel.setEasyArAvailability(easyArAvailability)
         when {
             !sessionState.arPrivacyAccepted -> viewModel.requirePrivacyAck()
+            easyArAvailability == EasyArAvailability.READY_FOR_TRACKING && hasCameraPermission -> viewModel.showEasyArTracking()
             hasCameraPermission -> viewModel.showCameraPreviewFallback()
             else -> viewModel.showCameraPermissionRequired()
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    LaunchedEffect(Unit) {
         viewModel.trackSummonOpened(sessionState.authSession)
+    }
+
+    LaunchedEffect(easyArSession) {
+        easyArSession.onTrackingStarted = { markerPose ->
+            viewModel.setEasyArTrackingStarted(markerPose)
+            viewModel.setStatusMessage("Marker tracked. Summon placed into camera view.")
+        }
+        easyArSession.onTrackingUpdated = { markerPose ->
+            viewModel.setEasyArTrackingUpdated(markerPose)
+        }
+        easyArSession.onTrackingLost = {
+            viewModel.setEasyArTrackingLost()
+            viewModel.setStatusMessage("Marker lost. Re-align the official marker.")
+        }
+        easyArSession.onError = { message ->
+            viewModel.setEasyArTrackingFailed(message)
+            if (hasCameraPermission) {
+                viewModel.showCameraPreviewFallbackAfterEasyArFailure()
+            } else {
+                viewModel.showScreenOnlyFallbackAfterEasyArFailure()
+            }
+            viewModel.setStatusMessage(
+                "$message Switched back to stable fallback summon mode.",
+            )
+        }
     }
 
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -144,30 +204,42 @@ fun SummonScreen(
                 .padding(16.dp),
         ) {
             Text(
-                text = "召唤页",
+                text = "Summon",
                 style = MaterialTheme.typography.headlineMedium,
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "当前先走 fallback 主路径，把相机预览、纯屏降级、截图保存和作品回流打通。",
+                text = if (uiState.characterAssetManifest.mobileReady) {
+                    "This stage uses the current mobile-ready 3D candidate for runtime validation. If tracking or loading fails, the summon page must stay on stable fallback."
+                } else {
+                    "This stage uses a placeholder 3D cube to validate EasyAR image tracking. The cube should appear only after the official marker is recognized inside the camera view."
+                },
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Google Play Services for AR：${if (uiState.arServicesInstalled) "已检测到安装包" else "未检测到安装包"}",
+                text = when (uiState.easyArAvailability) {
+                    EasyArAvailability.READY_FOR_TRACKING -> "EasyAR runtime: available"
+                    EasyArAvailability.LICENSE_MISSING -> "EasyAR runtime: bundled, but license key is missing"
+                    EasyArAvailability.ARCHIVE_ONLY -> "EasyAR SDK archive detected. Extract EasyAR.aar into app/libs to enable runtime loading."
+                    EasyArAvailability.NOT_BUNDLED -> "EasyAR runtime: not bundled, using fallback"
+                },
                 style = MaterialTheme.typography.bodySmall,
             )
-            if (!uiState.arServicesInstalled) {
-                Spacer(modifier = Modifier.height(4.dp))
-                OutlinedButton(
-                    onClick = { openArServicesPage(context) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("打开 Google Play Services for AR 安装页")
-                }
-            }
             Text(
-                text = "锚点图：${uiState.markerAsset.name} · ${uiState.markerAsset.resourceName}",
+                text = "Marker: ${uiState.markerAsset.name} / ${uiState.markerAsset.resourceName}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                text = "Model: assets/models/${uiState.characterAssetManifest.expectedGlbName}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                text = if (uiState.characterAssetManifest.mobileReady) {
+                    "Active 3D asset: ${uiState.characterAssetManifest.activeGlbName} (mobile-ready candidate)"
+                } else {
+                    "Active 3D asset: ${uiState.characterAssetManifest.activeGlbName}; source asset ${uiState.characterAssetManifest.sourceAssetName} is still pending mobile conversion"
+                },
                 style = MaterialTheme.typography.bodySmall,
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -184,37 +256,84 @@ fun SummonScreen(
                     )
                     .onSizeChanged { stageSize = it },
             ) {
-                when (uiState.entryState) {
-                    SummonEntryState.CAMERA_PREVIEW_FALLBACK -> {
-                        AndroidView(
-                            factory = { viewContext ->
-                                PreviewView(viewContext).apply {
-                                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                                    scaleType = PreviewView.ScaleType.FILL_CENTER
-                                    controller = cameraController
-                                }.also { previewView = it }
-                            },
-                            modifier = Modifier.fillMaxSize(),
-                            update = { view ->
-                                view.controller = cameraController
-                                previewView = view
-                            },
-                        )
-                    }
+                val isShowing3dPreview =
+                    (uiState.characterModelState == CharacterModelState.LOADING ||
+                        uiState.characterModelState == CharacterModelState.READY) &&
+                        uiState.entryState != SummonEntryState.EASYAR_TRACKING
 
-                    SummonEntryState.CAMERA_PERMISSION_REQUIRED,
-                    SummonEntryState.SCREEN_ONLY_FALLBACK,
-                    SummonEntryState.PRIVACY_REQUIRED,
-                    -> Unit
+                if (!isShowing3dPreview && uiState.entryState == SummonEntryState.CAMERA_PREVIEW_FALLBACK) {
+                    AndroidView(
+                        factory = { viewContext ->
+                            PreviewView(viewContext).apply {
+                                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                                scaleType = PreviewView.ScaleType.FILL_CENTER
+                                controller = cameraController
+                            }.also { previewView = it }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        update = { view ->
+                            view.controller = cameraController
+                            previewView = view
+                        },
+                    )
+                } else if (!isShowing3dPreview && uiState.entryState == SummonEntryState.EASYAR_TRACKING) {
+                    AndroidView(
+                        factory = { viewContext ->
+                            TextureView(viewContext).also { tv ->
+                                tv.isOpaque = true
+                                easyArTextureView = tv
+                                easyArSession.bindTextureView(tv)
+                                tv.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                                    override fun onSurfaceTextureAvailable(surface: android.graphics.SurfaceTexture, width: Int, height: Int) {
+                                        if (!easyArStarted) {
+                                            easyArStarted = easyArSession.start(width, height)
+                                        }
+                                    }
+
+                                    override fun onSurfaceTextureSizeChanged(surface: android.graphics.SurfaceTexture, width: Int, height: Int) = Unit
+
+                                    override fun onSurfaceTextureDestroyed(surface: android.graphics.SurfaceTexture): Boolean {
+                                        easyArSession.stop()
+                                        easyArStarted = false
+                                        return true
+                                    }
+
+                                    override fun onSurfaceTextureUpdated(surface: android.graphics.SurfaceTexture) = Unit
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    SummonStageBackdrop(isShowing3dPreview = isShowing3dPreview)
                 }
 
-                if (uiState.entryState != SummonEntryState.CAMERA_PREVIEW_FALLBACK) {
-                    CompanionFallbackBackdrop()
+                if (uiState.characterModelState == CharacterModelState.LOADING || uiState.characterModelState == CharacterModelState.READY) {
+                    CharacterModelViewport(
+                        modifier = Modifier.fillMaxSize(),
+                        assetPath = "models/${uiState.characterAssetManifest.activeGlbName}",
+                        loadAttempt = uiState.characterModelLoadAttempt,
+                        transformState = transformState,
+                        markerPoseState = uiState.markerPoseState,
+                        onLoadStarted = {
+                            viewModel.markCharacterModelLoadStarted(sessionState.authSession)
+                        },
+                        onLoadSucceeded = {
+                            viewModel.markCharacterModelLoadSucceeded(sessionState.authSession)
+                        },
+                        onLoadFailed = { errorCode, message ->
+                            viewModel.markCharacterModelLoadFailed(
+                                authSession = sessionState.authSession,
+                                errorCode = errorCode,
+                                message = message,
+                            )
+                        },
+                    )
                 }
 
                 Image(
                     painter = painterResource(id = R.drawable.ar_marker_fantasy_v1),
-                    contentDescription = "官方锚点图",
+                    contentDescription = "Official marker",
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(16.dp)
@@ -222,25 +341,97 @@ fun SummonScreen(
                         .clip(RoundedCornerShape(16.dp)),
                 )
 
-                CompanionOverlayCard(
-                    companionName = companionName,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
-                        .graphicsLayer(
-                            scaleX = scale,
-                            scaleY = scale,
-                            rotationZ = rotation,
+                if (uiState.characterModelState == CharacterModelState.FALLBACK_2D || uiState.characterModelState == CharacterModelState.FAILED) {
+                    CompanionOverlayCard(
+                        companionName = companionName,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+                            .graphicsLayer(
+                                scaleX = scale,
+                                scaleY = scale,
+                                rotationZ = rotationYDegrees,
+                            )
+                            .pointerInput(Unit) {
+                                detectTransformGestures { _, pan, zoom, rotationChange ->
+                                    offsetX += pan.x
+                                    offsetY += pan.y
+                                    scale = (scale * zoom).coerceIn(0.75f, 2.2f)
+                                    rotationYDegrees += rotationChange
+                                }
+                            },
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectTransformGestures { _, pan, zoom, rotationChange ->
+                                    offsetX += pan.x
+                                    offsetY += pan.y
+                                    scale = (scale * zoom).coerceIn(0.75f, 2.2f)
+                                    rotationYDegrees += rotationChange
+                                }
+                            },
+                    )
+                }
+
+                when (uiState.characterModelState) {
+                    CharacterModelState.LOADING -> {
+                        ModelStatusCard(
+                            title = "Loading 3D character",
+                            body = if (uiState.characterAssetManifest.mobileReady) {
+                                "The summon stage is preparing the bundled mobile-ready character candidate. Existing screenshot and fallback flows remain available after load fails."
+                            } else {
+                                "The summon stage is preparing the placeholder 3D cube. Existing screenshot and fallback flows remain available after load fails."
+                            },
+                            modifier = Modifier.align(Alignment.Center),
                         )
-                        .pointerInput(Unit) {
-                            detectTransformGestures { _, pan, zoom, rotationChange ->
-                                offsetX += pan.x
-                                offsetY += pan.y
-                                scale = (scale * zoom).coerceIn(0.75f, 2.2f)
-                                rotation += rotationChange
-                            }
-                        },
-                )
+                    }
+
+                    CharacterModelState.READY -> {
+                        ModelStatusCard(
+                            title = "3D preview ready",
+                            body = if (uiState.characterAssetManifest.mobileReady) {
+                                "The mobile-ready 3D candidate loaded successfully. Waiting for marker tracking or fallback validation. Saved screenshots still use the current fallback capture path."
+                            } else {
+                                "Placeholder 3D asset ready. Waiting for marker tracking to place the summon into camera view. Saved screenshots still use the current fallback capture path."
+                            },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(16.dp),
+                            compact = true,
+                        )
+                    }
+
+                    CharacterModelState.FAILED -> {
+                        FailedModelCard(
+                            message = uiState.characterModelErrorMessage ?: if (uiState.characterAssetManifest.mobileReady) {
+                                "Failed to load the current mobile-ready 3D candidate. You can keep using 2D fallback while the asset is adjusted."
+                            } else {
+                                "Failed to load the active 3D preview asset. character.glb is still not considered mobile-ready, so the stable path remains the placeholder or 2D fallback."
+                            },
+                            onRetry = {
+                                viewModel.retryCharacterModelLoad(sessionState.authSession)
+                            },
+                            onUse2dFallback = {
+                                viewModel.use2dCharacterFallback(sessionState.authSession)
+                            },
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+
+                    CharacterModelState.FALLBACK_2D -> {
+                        ModelStatusCard(
+                            title = "2D fallback active",
+                            body = "You are using the stable 2D summon fallback with camera or screen background. Screenshot and recent capture sync stay unchanged while EasyAR and final 3D assets remain non-blocking.",
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(16.dp),
+                            compact = true,
+                        )
+                    }
+                }
 
                 Column(
                     modifier = Modifier
@@ -248,18 +439,24 @@ fun SummonScreen(
                         .padding(16.dp),
                 ) {
                     Text(
-                        text = when (uiState.entryState) {
-                            SummonEntryState.PRIVACY_REQUIRED -> "等待隐私确认"
-                            SummonEntryState.CAMERA_PERMISSION_REQUIRED -> "等待相机权限"
-                            SummonEntryState.CAMERA_PREVIEW_FALLBACK -> "相机预览 fallback"
-                            SummonEntryState.SCREEN_ONLY_FALLBACK -> "纯屏 fallback"
-                        },
+                        text = summonModeLabel(uiState.entryState, uiState.characterModelState),
                         style = MaterialTheme.typography.titleMedium,
                         color = Color.White,
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "拖动、缩放、旋转角色卡片，然后保存当前召唤画面。",
+                        text = if (isShowing3dPreview) {
+                            "Drag, scale, and rotate the 3D summon. Rotation now targets the model's Y axis."
+                        } else if (uiState.entryState == SummonEntryState.EASYAR_TRACKING) {
+                            when (uiState.easyArTrackingState) {
+                                EasyArTrackingState.IDLE -> "Place the official marker inside the summon stage to start AR tracking."
+                                EasyArTrackingState.TRACKING -> "Marker tracked. The cube is now attached to the marker and follows its pose."
+                                EasyArTrackingState.LOST -> "Marker lost. Re-align the official marker to bring the cube back."
+                                EasyArTrackingState.FAILED -> uiState.trackingErrorMessage ?: "EasyAR tracking failed. You can switch back to the 2D fallback."
+                            }
+                        } else {
+                            "Drag, scale, and rotate the summon fallback. Rotation now targets the preview model's Y axis."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White,
                     )
@@ -286,14 +483,14 @@ fun SummonScreen(
                         onClick = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("请求相机")
+                        Text("Request camera")
                     }
                 } else {
                     OutlinedButton(
                         onClick = viewModel::showScreenOnlyFallback,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("纯屏模式")
+                        Text("Screen-only")
                     }
                     OutlinedButton(
                         onClick = {
@@ -305,12 +502,30 @@ fun SummonScreen(
                         },
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("相机预览")
+                        Text("Camera preview")
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+
+            if (uiState.characterModelState == CharacterModelState.READY) {
+                OutlinedButton(
+                    onClick = { viewModel.use2dCharacterFallback(sessionState.authSession) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Use 2D fallback instead")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            } else if (uiState.characterModelState == CharacterModelState.FALLBACK_2D) {
+                OutlinedButton(
+                    onClick = { viewModel.retryCharacterModelLoad(sessionState.authSession) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Retry 3D preview")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -328,7 +543,7 @@ fun SummonScreen(
                                 offsetX = offsetX,
                                 offsetY = offsetY,
                                 scale = scale,
-                                rotation = rotation,
+                                rotation = rotationYDegrees,
                             )
                             val saveResult = withContext(Dispatchers.IO) {
                                 BitmapSaver.saveCapture(context, bitmap)
@@ -340,12 +555,12 @@ fun SummonScreen(
                                     )
                                     captureCount += 1
                                     val reference = RecentCaptureReference(
-                                        title = "最近一次召唤 #$captureCount",
-                                        summary = "你把 $companionName 放进了现实画面里，并保存了当前召唤截图。",
+                                        title = "Recent summon #$captureCount",
+                                        summary = "You placed $companionName into a summon scene and saved the current frame.",
                                         storageLocation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                            "已保存到系统相册：$location"
+                                            "Saved to the system gallery: $location"
                                         } else {
-                                            "已保存到应用图片目录：$location"
+                                            "Saved to the app pictures directory: $location"
                                         },
                                     )
                                     viewModel.syncRecentCapture(
@@ -361,20 +576,22 @@ fun SummonScreen(
                                 }
                                 .onFailure { error ->
                                     viewModel.setSavingCapture(false)
-                                    viewModel.setStatusMessage(error.message ?: "截图保存失败")
+                                    viewModel.setStatusMessage(error.toUserFacingMessage("保存召唤截图失败，请稍后重试。"))
                                 }
                         }
                     },
                     modifier = Modifier.weight(1f),
-                    enabled = !uiState.isSavingCapture && sessionState.arPrivacyAccepted,
+                    enabled = !uiState.isSavingCapture &&
+                        sessionState.arPrivacyAccepted &&
+                        uiState.characterModelState != CharacterModelState.LOADING,
                 ) {
-                    Text(if (uiState.isSavingCapture) "保存中..." else "保存召唤截图")
+                    Text(if (uiState.isSavingCapture) "Saving..." else "Save summon capture")
                 }
                 OutlinedButton(
                     onClick = onBack,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("返回聊天")
+                    Text("Back to chat")
                 }
             }
 
@@ -396,7 +613,7 @@ fun SummonScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !uiState.isSavingCapture,
                 ) {
-                    Text("重试作品回流同步")
+                    Text("Retry recent capture sync")
                 }
             }
         }
@@ -416,13 +633,13 @@ fun SummonScreen(
                         }
                     },
                 ) {
-                    Text("我知道了")
+                    Text("Continue")
                 }
             },
-            title = { Text("相机与 AR 说明") },
+            title = { Text("Camera and summon preview notice") },
             text = {
                 Text(
-                    "当前召唤页会使用相机画面生成角色召唤截图，不做房间建模。你保存的截图会写入系统相册或应用图片目录，后续可在设置里清除 App 内最近作品回流记录。",
+                    "The summon page uses the camera preview to validate summon placement and saves a screenshot to the device gallery or pictures directory. It does not build a room model.",
                 )
             },
         )
@@ -449,18 +666,63 @@ private fun CompanionFallbackBackdrop() {
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "纯屏 fallback 已启用",
+                    text = "Screen-only fallback",
                     style = MaterialTheme.typography.titleMedium,
                     color = Color.White,
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "没有相机权限或不使用相机时，仍然可以摆放角色并保存召唤截图。",
+                    text = "Even without camera preview, the summon stage stays available and can still save a fallback capture.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SummonStageBackdrop(
+    isShowing3dPreview: Boolean,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF0B1020),
+                        Color(0xFF121A31),
+                        Color(0xFF1C2B4A),
+                    ),
+                ),
+            )
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f)),
+            shape = RoundedCornerShape(24.dp),
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = if (isShowing3dPreview) "3D validation stage" else "Fallback summon stage",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = if (isShowing3dPreview) {
+                        "This stage prioritizes visible 3D rendering stability over camera composition."
+                    } else {
+                        "Camera or screen-only fallback remains available when 3D preview is disabled."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.82f),
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(1.dp))
     }
 }
 
@@ -497,13 +759,13 @@ private fun CompanionOverlayCard(
                     color = Color.White,
                 )
                 Text(
-                    text = "已召唤",
+                    text = "Summoned",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.85f),
                 )
             }
             Text(
-                text = "拖动 / 缩放 / 旋转",
+                text = "Drag / Scale / Rotate",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White.copy(alpha = 0.8f),
             )
@@ -512,34 +774,101 @@ private fun CompanionOverlayCard(
 }
 
 @Composable
-private fun rememberCameraPermission(): Boolean {
-    val context = LocalContext.current
+private fun ModelStatusCard(
+    title: String,
+    body: String,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false,
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xCC0F172A),
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(if (compact) 12.dp else 16.dp),
+        ) {
+            Text(
+                text = title,
+                style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+                color = Color.White,
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.85f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun FailedModelCard(
+    message: String,
+    onRetry: () -> Unit,
+    onUse2dFallback: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = Color(0xE61F2937)),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "3D preview unavailable",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.85f),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onRetry) {
+                    Text("Retry 3D")
+                }
+                OutlinedButton(onClick = onUse2dFallback) {
+                    Text("Use 2D fallback")
+                }
+            }
+        }
+    }
+}
+
+private fun summonModeLabel(
+    entryState: SummonEntryState,
+    modelState: CharacterModelState,
+): String {
+    val previewLabel = when (entryState) {
+        SummonEntryState.PRIVACY_REQUIRED -> "Privacy gate"
+        SummonEntryState.CAMERA_PERMISSION_REQUIRED -> "Awaiting camera permission"
+        SummonEntryState.CAMERA_PREVIEW_FALLBACK -> "Camera preview"
+        SummonEntryState.SCREEN_ONLY_FALLBACK -> "Screen-only"
+        SummonEntryState.EASYAR_TRACKING -> "EasyAR camera"
+    }
+    val modelLabel = when (modelState) {
+        CharacterModelState.LOADING -> "3D loading"
+        CharacterModelState.READY -> "3D ready"
+        CharacterModelState.FAILED -> "3D failed"
+        CharacterModelState.FALLBACK_2D -> "2D fallback"
+    }
+    return "$previewLabel / $modelLabel"
+}
+
+private fun isCameraPermissionGranted(context: Context): Boolean {
     return ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 }
 
-private fun isPackageInstalled(
-    packageManager: PackageManager,
-    packageName: String,
-): Boolean = runCatching {
-    packageManager.getPackageInfo(packageName, 0)
+private fun isEasyArRuntimeAvailable(): Boolean = runCatching {
+    Class.forName("cn.easyar.Engine")
 }.isSuccess
-
-private fun openArServicesPage(context: android.content.Context) {
-    val marketIntent = Intent(
-        Intent.ACTION_VIEW,
-        Uri.parse("market://details?id=com.google.ar.core"),
-    ).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    val webIntent = Intent(
-        Intent.ACTION_VIEW,
-        Uri.parse("https://play.google.com/store/apps/details?id=com.google.ar.core"),
-    ).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    runCatching { context.startActivity(marketIntent) }
-        .onFailure { context.startActivity(webIntent) }
-}
 
 private fun createCaptureBitmap(
     previewBitmap: Bitmap?,
@@ -656,7 +985,7 @@ private fun drawCompanionOverlay(
     canvas.drawRoundRect(rect, 44f * scale, 44f * scale, glowPaint)
     canvas.drawText("THETWO", rect.left + 26f * scale, rect.top + 52f * scale, titlePaint)
     canvas.drawText(companionName, rect.left + 26f * scale, rect.centerY(), namePaint)
-    canvas.drawText("已召唤", rect.left + 26f * scale, rect.centerY() + 44f * scale, labelPaint)
+    canvas.drawText("Summoned", rect.left + 26f * scale, rect.centerY() + 44f * scale, labelPaint)
     canvas.drawText("Captured in reality", rect.left + 26f * scale, rect.bottom - 32f * scale, labelPaint)
     canvas.restore()
 }

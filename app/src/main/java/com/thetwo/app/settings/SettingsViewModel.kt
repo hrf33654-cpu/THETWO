@@ -15,6 +15,7 @@ import com.thetwo.app.network.ApiException
 import com.thetwo.app.network.AuthSession
 import com.thetwo.app.network.CaptureRepository
 import com.thetwo.app.network.ChatRepository
+import com.thetwo.app.network.toUserFacingMessage
 import kotlinx.coroutines.launch
 
 data class SettingsUiState(
@@ -101,6 +102,27 @@ class SettingsViewModel(
         }
     }
 
+    fun logout(
+        authSession: AuthSession?,
+        onSuccess: () -> Unit,
+    ) {
+        authSession?.let { session ->
+            analyticsTracker.track(
+                event = AnalyticsEvents.LOGOUT_SUCCESS,
+                properties = mapOf(
+                    "userId" to session.userId,
+                    "screen" to "settings",
+                    "result" to "success",
+                ),
+            )
+        }
+        uiState = uiState.copy(
+            isWorking = false,
+            feedbackMessage = "已退出登录。",
+        )
+        onSuccess()
+    }
+
     fun deleteAccount(
         authSession: AuthSession?,
         onSuccess: () -> Unit,
@@ -146,7 +168,7 @@ class SettingsViewModel(
         } else {
             uiState = uiState.copy(
                 isWorking = false,
-                feedbackMessage = error.message ?: "操作失败，请稍后重试。",
+                feedbackMessage = error.toUserFacingMessage("操作失败，请稍后重试。"),
             )
         }
     }

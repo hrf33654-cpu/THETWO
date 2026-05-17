@@ -4,21 +4,44 @@ import {
   appendChatMessage,
   clearChatHistory,
   clearRecentCapture,
+  clearSafetyState,
+  countChatMessages,
   deleteAccount,
   findRecentCapture,
   getChatHistory,
+  getChatSummary,
   getCompanionProfile,
-  getRecentChatHistory,
+  getMemoryState,
   getRecentCapture,
+  getRecentChatHistory,
+  getSafetyState,
   getSessionByToken,
   recordDevCode,
+  createLoginCode,
+  upsertChatSummary,
   upsertCompanionProfile,
+  upsertMemoryState,
   upsertRecentCapture,
+  upsertSafetyState,
   verifyCodeAndCreateSession,
 } from "./db.js";
+import { sendLoginCodeEmail } from "./email.js";
 import { ApiError, badRequest, unauthorized } from "./errors.js";
-import { generateAssistantReply, resolveChatMode } from "./reply.js";
-import type { ApiResponse, CompanionProfileRecord, RecentCaptureRecord, SessionRecord } from "./types.js";
+import {
+  generateAssistantReply,
+  refreshDerivedState,
+  resolveSafetyState,
+} from "./reply.js";
+import type {
+  ApiResponse,
+  ChatSummaryRecord,
+  CompanionProfileRecord,
+  MemoryStateRecord,
+  RecentCaptureRecord,
+  RequestCodeResponse,
+  SafetyStateRecord,
+  SessionRecord,
+} from "./types.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -34,6 +57,7 @@ function ok<T>(data: T, message = "ok"): ApiResponse<T> {
     data,
     errorCode: null,
     message,
+    details: null,
   };
 }
 
@@ -43,6 +67,117 @@ function requireSession(req: Request): SessionRecord {
     unauthorized();
   }
   return getSessionByToken(authorization.replace("Bearer ", "").trim());
+}
+
+function logDerivedEvent(input: {
+  event: "chat.summary.refresh" | "chat.memory.refresh" | "chat.safety_state.updated";
+  userId: string;
+  outcome: string;
+  mode?: string;
+  durationMs?: number;
+  errorCode?: string;
+  reason?: string | null;
+  remainingUserTurns?: number;
+}): void {
+  console.log(
+    JSON.stringify({
+      event: input.event,
+      userId: input.userId,
+      outcome: input.outcome,
+      mode: input.mode,
+      durationMs: input.durationMs,
+      errorCode: input.errorCode,
+      reason: input.reason,
+      remainingUserTurns: input.remainingUserTurns,
+    }),
+  );
+}
+
+function persistSafetyState(input: {
+  userId: string;
+  mode: "NORMAL" | "RESTRICTED";
+  reason: string | null;
+  shouldPersistRestrictedState: boolean;
+  remainingUserTurnsAfterReply: number;
+}): void {
+  if (input.shouldPersistRestrictedState) {
+    upsertSafetyState(input.userId, {
+      mode: input.mode,
+      reason: input.reason ?? "KEYWORD_TRIGGER",
+      remainingUserTurns: input.remainingUserTurnsAfterReply,
+    });
+    logDerivedEvent({
+      event: "chat.safety_state.updated",
+      userId: input.userId,
+      mode: input.mode,
+      outcome: "updated",
+      reason: input.reason,
+      remainingUserTurns: input.remainingUserTurnsAfterReply,
+    });
+    return;
+  }
+
+  clearSafetyState(input.userId);
+  logDerivedEvent({
+    event: "chat.safety_state.updated",
+    userId: input.userId,
+    mode: input.mode,
+    outcome: "cleared",
+    reason: input.reason,
+    remainingUserTurns: 0,
+  });
+}
+
+function scheduleDerivedRefresh(input: {
+  userId: string;
+  companionProfile: CompanionProfileRecord;
+  recentCapture: RecentCaptureRecord | null;
+  chatSummary: ChatSummaryRecord | null;
+  memoryState: MemoryStateRecord | null;
+}): void {
+  void (async () => {
+    const fullHistory = getChatHistory(input.userId);
+    const totalMessageCount = countChatMessages(input.userId);
+
+    const refreshed = await refreshDerivedState({
+      companionProfile: input.companionProfile,
+      recentCapture: input.recentCapture,
+      chatSummary: input.chatSummary,
+      recentHistory: fullHistory,
+      totalMessageCount,
+      memoryState: input.memoryState,
+    });
+
+    if (!refreshed) {
+      return;
+    }
+
+    const summaryStartedAt = Date.now();
+    upsertChatSummary(input.userId, refreshed.summary, refreshed.sourceMessageCount);
+    logDerivedEvent({
+      event: "chat.summary.refresh",
+      userId: input.userId,
+      outcome: "success",
+      durationMs: Date.now() - summaryStartedAt,
+    });
+
+    const memoryStartedAt = Date.now();
+    upsertMemoryState(input.userId, refreshed.memoryNote);
+    logDerivedEvent({
+      event: "chat.memory.refresh",
+      userId: input.userId,
+      outcome: "success",
+      durationMs: Date.now() - memoryStartedAt,
+    });
+  })().catch((error) => {
+    const errorCode = error instanceof ApiError ? error.errorCode : "INTERNAL_SERVER_ERROR";
+    logDerivedEvent({
+      event: "chat.summary.refresh",
+      userId: input.userId,
+      outcome: "failed",
+      errorCode,
+    });
+  });
 }
 
 app.get("/health", (_req, res) => {
@@ -55,16 +190,35 @@ app.get("/health", (_req, res) => {
   );
 });
 
-app.post("/auth/request-code", (req, res) => {
+app.get("/health/config", (_req, res) => {
+  res.json(
+    ok({
+      appEnv: config.appEnv,
+      emailMode: config.emailMode,
+      smtpConfigured: !!(config.emailMode === "smtp" && config.smtpHost && config.smtpUser && config.smtpPass && config.smtpFrom),
+      llmConfigured: !!(config.llmBaseUrl && config.llmApiKey),
+      llmBaseUrlConfigured: !!config.llmBaseUrl,
+      llmModelConfigured: !!config.llmModel,
+      llmModel: config.llmModel || null,
+      dataDir: config.dataDir,
+    }),
+  );
+});
+
+app.post("/auth/request-code", async (req, res) => {
   const email = String(req.body?.email ?? "").trim();
-  recordDevCode(email, config.devLoginCode);
+  const code = config.emailMode === "smtp" ? createLoginCode() : config.devLoginCode;
+  recordDevCode(email, code);
+  const sendResult = await sendLoginCodeEmail({ email, code });
+  const response: RequestCodeResponse = {
+    email,
+    devCode: sendResult.deliveryMode === "DEV" ? code : null,
+    deliveryMode: sendResult.deliveryMode,
+  };
   res.json(
     ok(
-      {
-        email,
-        devCode: config.devLoginCode,
-      },
-      "验证码已生成",
+      response,
+      sendResult.deliveryMode === "SMTP" ? "验证码已发送到邮箱" : "开发验证码已生成",
     ),
   );
 });
@@ -118,41 +272,54 @@ app.post("/chat/send", async (req, res) => {
     badRequest("CHAT_SEND_FAILED", "消息不能为空");
   }
 
-  const mode = resolveChatMode(message);
   const startedAt = Date.now();
 
   try {
     const companionProfile = getCompanionProfile(session.userId);
     const recentCapture = findRecentCapture(session.userId);
     const recentHistory = getRecentChatHistory(session.userId, 12);
+    const chatSummary = getChatSummary(session.userId);
+    const memoryState = getMemoryState(session.userId);
+    const safetyState = getSafetyState(session.userId);
+    const safetyResolution = resolveSafetyState(message, safetyState);
 
     const assistantMessage = await generateAssistantReply({
-      mode,
+      mode: safetyResolution.mode,
       message,
       companionProfile,
       recentCapture,
       recentHistory,
+      chatSummary,
+      memoryState,
     });
 
     appendChatMessage({
       userId: session.userId,
       role: "USER",
       content: message,
-      mode,
+      mode: safetyResolution.mode,
       clientMessageId,
     });
     appendChatMessage({
       userId: session.userId,
       role: "ASSISTANT",
       content: assistantMessage,
-      mode,
+      mode: safetyResolution.mode,
+    });
+
+    persistSafetyState({
+      userId: session.userId,
+      mode: safetyResolution.mode,
+      reason: safetyResolution.reason,
+      shouldPersistRestrictedState: safetyResolution.shouldPersistRestrictedState,
+      remainingUserTurnsAfterReply: safetyResolution.remainingUserTurnsAfterReply,
     });
 
     console.log(
       JSON.stringify({
         event: "chat.send",
         userId: session.userId,
-        mode,
+        mode: safetyResolution.mode,
         durationMs: Date.now() - startedAt,
         outcome: "success",
       }),
@@ -162,18 +329,26 @@ app.post("/chat/send", async (req, res) => {
       ok(
         {
           assistantMessage,
-          mode,
+          mode: safetyResolution.mode,
           timestamp: new Date().toISOString(),
         },
         "回复已生成",
       ),
     );
+
+    scheduleDerivedRefresh({
+      userId: session.userId,
+      companionProfile,
+      recentCapture,
+      chatSummary,
+      memoryState,
+    });
   } catch (error) {
     console.log(
       JSON.stringify({
         event: "chat.send",
         userId: session.userId,
-        mode,
+        mode: "ERROR",
         durationMs: Date.now() - startedAt,
         outcome: error instanceof ApiError ? error.errorCode : "INTERNAL_SERVER_ERROR",
       }),
@@ -232,6 +407,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
       data: null,
       errorCode: error.errorCode,
       message: error.message,
+      details: error.details,
     });
     return;
   }
@@ -242,6 +418,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     data: null,
     errorCode: "INTERNAL_SERVER_ERROR",
     message,
+    details: null,
   });
 });
 

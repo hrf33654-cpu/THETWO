@@ -28,19 +28,106 @@ class SummonViewModel(
     }
 
     fun showCameraPermissionRequired() {
-        uiState = uiState.copy(entryState = SummonEntryState.CAMERA_PERMISSION_REQUIRED)
+        uiState = uiState.copy(
+            entryState = SummonEntryState.CAMERA_PERMISSION_REQUIRED,
+            easyArTrackingState = EasyArTrackingState.IDLE,
+            markerPoseState = null,
+            trackingErrorMessage = null,
+        )
     }
 
     fun showCameraPreviewFallback() {
-        uiState = uiState.copy(entryState = SummonEntryState.CAMERA_PREVIEW_FALLBACK)
+        uiState = uiState.copy(
+            entryState = SummonEntryState.CAMERA_PREVIEW_FALLBACK,
+            easyArTrackingState = EasyArTrackingState.IDLE,
+            markerPoseState = null,
+            trackingErrorMessage = null,
+        )
+    }
+
+    fun showCameraPreviewFallbackAfterEasyArFailure() {
+        uiState = uiState.copy(
+            entryState = SummonEntryState.CAMERA_PREVIEW_FALLBACK,
+            markerPoseState = null,
+            characterModelState = CharacterModelState.FALLBACK_2D,
+            isUsing3dPreview = false,
+        )
+    }
+
+    fun showEasyArTracking() {
+        uiState = uiState.copy(
+            entryState = SummonEntryState.EASYAR_TRACKING,
+            easyArTrackingState = EasyArTrackingState.IDLE,
+            markerPoseState = null,
+            trackingErrorMessage = null,
+        )
     }
 
     fun showScreenOnlyFallback() {
-        uiState = uiState.copy(entryState = SummonEntryState.SCREEN_ONLY_FALLBACK)
+        uiState = uiState.copy(
+            entryState = SummonEntryState.SCREEN_ONLY_FALLBACK,
+            easyArTrackingState = EasyArTrackingState.IDLE,
+            markerPoseState = null,
+            trackingErrorMessage = null,
+        )
     }
 
-    fun setArServicesInstalled(installed: Boolean) {
-        uiState = uiState.copy(arServicesInstalled = installed)
+    fun showScreenOnlyFallbackAfterEasyArFailure() {
+        uiState = uiState.copy(
+            entryState = SummonEntryState.SCREEN_ONLY_FALLBACK,
+            markerPoseState = null,
+            characterModelState = CharacterModelState.FALLBACK_2D,
+            isUsing3dPreview = false,
+        )
+    }
+
+    fun setEasyArAvailability(availability: EasyArAvailability) {
+        uiState = uiState.copy(easyArAvailability = availability)
+    }
+
+    fun setCharacterAssetManifest(manifest: CharacterAssetManifest) {
+        uiState = uiState.copy(characterAssetManifest = manifest)
+    }
+
+    fun setEasyArTrackingIdle() {
+        uiState = uiState.copy(
+            easyArTrackingState = EasyArTrackingState.IDLE,
+            markerPoseState = null,
+            trackingErrorMessage = null,
+        )
+    }
+
+    fun setEasyArTrackingStarted(markerPoseState: MarkerPoseState) {
+        uiState = uiState.copy(
+            easyArTrackingState = EasyArTrackingState.TRACKING,
+            markerPoseState = markerPoseState,
+            trackingErrorMessage = null,
+        )
+    }
+
+    fun setEasyArTrackingUpdated(markerPoseState: MarkerPoseState) {
+        uiState = uiState.copy(
+            easyArTrackingState = EasyArTrackingState.TRACKING,
+            markerPoseState = markerPoseState,
+            trackingErrorMessage = null,
+        )
+    }
+
+    fun setEasyArTrackingLost() {
+        uiState = uiState.copy(
+            easyArTrackingState = EasyArTrackingState.LOST,
+            markerPoseState = null,
+        )
+    }
+
+    fun setEasyArTrackingFailed(message: String) {
+        uiState = uiState.copy(
+            easyArTrackingState = EasyArTrackingState.FAILED,
+            markerPoseState = null,
+            trackingErrorMessage = message,
+            characterModelState = CharacterModelState.FALLBACK_2D,
+            isUsing3dPreview = false,
+        )
     }
 
     fun setSavingCapture(saving: Boolean) {
@@ -49,6 +136,83 @@ class SummonViewModel(
 
     fun setStatusMessage(message: String?) {
         uiState = uiState.copy(statusMessage = message)
+    }
+
+    fun markCharacterModelLoadStarted(authSession: AuthSession?) {
+        uiState = uiState.copy(
+            characterModelState = CharacterModelState.LOADING,
+            characterModelErrorMessage = null,
+            isUsing3dPreview = true,
+        )
+        analyticsTracker.track(
+            event = AnalyticsEvents.CHARACTER_MODEL_LOAD_STARTED,
+            properties = buildMap {
+                put("screen", "summon")
+                authSession?.userId?.let { put("userId", it) }
+            },
+        )
+    }
+
+    fun markCharacterModelLoadSucceeded(authSession: AuthSession?) {
+        uiState = uiState.copy(
+            characterModelState = CharacterModelState.READY,
+            characterModelErrorMessage = null,
+            isUsing3dPreview = true,
+        )
+        analyticsTracker.track(
+            event = AnalyticsEvents.CHARACTER_MODEL_LOAD_SUCCEEDED,
+            properties = buildMap {
+                put("screen", "summon")
+                put("result", "success")
+                authSession?.userId?.let { put("userId", it) }
+            },
+        )
+    }
+
+    fun markCharacterModelLoadFailed(
+        authSession: AuthSession?,
+        errorCode: String,
+        message: String,
+    ) {
+        uiState = uiState.copy(
+            characterModelState = CharacterModelState.FAILED,
+            characterModelErrorMessage = message,
+            isUsing3dPreview = false,
+        )
+        analyticsTracker.track(
+            event = AnalyticsEvents.CHARACTER_MODEL_LOAD_FAILED,
+            properties = buildMap {
+                put("screen", "summon")
+                put("result", "failed")
+                put("errorCode", errorCode)
+                authSession?.userId?.let { put("userId", it) }
+            },
+        )
+    }
+
+    fun retryCharacterModelLoad(authSession: AuthSession?) {
+        uiState = uiState.copy(
+            characterModelState = CharacterModelState.LOADING,
+            characterModelErrorMessage = null,
+            isUsing3dPreview = true,
+            characterModelLoadAttempt = uiState.characterModelLoadAttempt + 1,
+        )
+        markCharacterModelLoadStarted(authSession)
+    }
+
+    fun use2dCharacterFallback(authSession: AuthSession?) {
+        uiState = uiState.copy(
+            characterModelState = CharacterModelState.FALLBACK_2D,
+            isUsing3dPreview = false,
+        )
+        analyticsTracker.track(
+            event = AnalyticsEvents.CHARACTER_MODEL_FALLBACK_USED,
+            properties = buildMap {
+                put("screen", "summon")
+                put("result", "fallback_2d")
+                authSession?.userId?.let { put("userId", it) }
+            },
+        )
     }
 
     fun trackSummonOpened(authSession: AuthSession?) {
@@ -83,7 +247,7 @@ class SummonViewModel(
             uiState = uiState.copy(
                 isSavingCapture = false,
                 pendingRecentCapture = reference,
-                statusMessage = "截图已保存，但登录态已失效，无法同步作品回流。",
+                statusMessage = "Screenshot saved locally, but the session is no longer valid.",
             )
             return
         }
@@ -104,7 +268,7 @@ class SummonViewModel(
                 uiState = uiState.copy(
                     isSavingCapture = false,
                     pendingRecentCapture = null,
-                    statusMessage = "截图与作品回流已同步，正在返回聊天页。",
+                    statusMessage = "Capture saved and synced back into chat.",
                 )
                 onSuccess(savedReference)
             }.onFailure { error ->
@@ -124,7 +288,7 @@ class SummonViewModel(
                     uiState = uiState.copy(
                         isSavingCapture = false,
                         pendingRecentCapture = reference,
-                        statusMessage = "截图已保存，但作品回流同步失败，可留在当前页重试。",
+                        statusMessage = "Screenshot saved, but recent capture sync failed. You can retry here.",
                     )
                 }
             }

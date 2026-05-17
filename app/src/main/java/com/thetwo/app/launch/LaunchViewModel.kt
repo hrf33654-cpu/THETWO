@@ -14,6 +14,7 @@ import com.thetwo.app.network.ApiException
 import com.thetwo.app.network.AuthRepository
 import com.thetwo.app.network.CaptureRepository
 import com.thetwo.app.network.CompanionRepository
+import com.thetwo.app.network.toUserFacingMessage
 import com.thetwo.app.session.PersistedSessionState
 import com.thetwo.app.session.SessionLocalStore
 import kotlinx.coroutines.launch
@@ -118,7 +119,7 @@ class LaunchViewModel(
 
                 uiState = LaunchUiState(
                     isRestoring = false,
-                    errorMessage = error.message ?: "会话恢复失败，请重试。",
+                    errorMessage = error.toUserFacingMessage("会话恢复失败，请重试。"),
                 )
             }
         }

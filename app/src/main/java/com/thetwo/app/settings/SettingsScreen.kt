@@ -34,6 +34,7 @@ fun SettingsScreen(
     chatViewModel: ChatViewModel,
     onBack: () -> Unit,
     onUnauthorized: () -> Unit = {},
+    onLogout: () -> Unit = {},
     onAccountDeleted: () -> Unit = {},
 ) {
     val sessionState = sessionViewModel.uiState
@@ -105,6 +106,19 @@ fun SettingsScreen(
                 enabled = !uiState.isWorking,
             ) {
                 Text("清空当前聊天")
+            }
+
+            OutlinedButton(
+                onClick = {
+                    viewModel.logout(
+                        authSession = sessionState.authSession,
+                        onSuccess = onLogout,
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isWorking,
+            ) {
+                Text("退出登录")
             }
 
             OutlinedButton(

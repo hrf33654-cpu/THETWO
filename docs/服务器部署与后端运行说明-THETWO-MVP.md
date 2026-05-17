@@ -2,9 +2,9 @@
 
 ## 文档信息
 
-- 文档版本：`v0.3`
+- 文档版本：`v0.4`
 - 文档状态：`In Progress`
-- 更新时间：`2026-05-09`
+- 更新时间：`2026-05-13`
 - 关联后端目录：`backend/`
 
 ## 1. 文档目的
@@ -132,6 +132,26 @@ curl http://111.231.14.253/health
   - `POST /chat/send`
 - `/chat/send` 已返回真实模型回复，不再返回旧占位文案
 
+当前建议新增验证：
+
+```bash
+cd backend
+npm run probe:llm
+```
+
+预期结果：
+
+- 成功时输出 `HTTP 200`
+- 失败时输出 `Probe diagnosis`
+- 重点看分类是否为：
+  - `auth_failed`
+  - `rate_limited_or_quota`
+  - `model_not_found`
+  - `upstream_unavailable`
+  - `unknown_failure`
+
+这一步用于先确认 `LLM_BASE_URL / LLM_API_KEY / LLM_MODEL` 是否真的匹配当前供应商套餐，而不是只根据聊天页报错猜测。
+
 ## 6. 当前后端接口范围
 
 已实现接口：
@@ -154,7 +174,7 @@ curl http://111.231.14.253/health
 
 当前已实现：
 
-- 开发验证码
+- SMTP / 真实邮件验证码发送代码基础设施（`EMAIL_MODE=smtp` 时启用）
 - 真实 LLM 调用链路
 - 真实 LLM 线上环境变量配置与公网联调
 - SQLite 本地库
