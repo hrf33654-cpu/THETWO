@@ -8,7 +8,6 @@ import com.thetwo.app.network.CompanionRepository
 import com.thetwo.app.network.RemoteChatMessage
 import com.thetwo.app.network.RemoteChatMode
 import com.thetwo.app.network.RemoteChatSendResult
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -52,23 +51,37 @@ class ChatViewModelTest {
 
     @Test
     fun `clearConversation resets messages with companion name`() {
-        viewModel.clearConversation("飞樱")
+        viewModel.clearConversation("Sakura")
 
         assertEquals(1, viewModel.uiState.messages.size)
-        assertTrue(viewModel.uiState.messages.first().content.contains("飞樱"))
+        assertTrue(viewModel.uiState.messages.first().content.contains("Sakura"))
     }
 
     @Test
     fun `recent capture is appended to conversation`() {
         val reference = RecentCaptureReference(
-            title = "最近一次召唤",
-            summary = "你把飞樱放进了现实画面里。",
-            storageLocation = "已保存到系统相册",
+            title = "Recent summon",
+            summary = "You saved a soft blue summon scene.",
+            storageLocation = "Saved to gallery",
         )
 
-        viewModel.onRecentCaptureRecorded(reference, "飞樱")
+        viewModel.onRecentCaptureRecorded(reference, "Sakura")
 
         assertEquals(reference, viewModel.uiState.recentCaptureReference)
-        assertTrue(viewModel.uiState.messages.last().content.contains("飞樱"))
+        assertTrue(viewModel.uiState.messages.last().content.contains("Sakura"))
+    }
+
+    @Test
+    fun `sanitizeDisplayedMessage removes think blocks`() {
+        val sanitized = sanitizeDisplayedMessage("<think>internal trace</think>Morning.")
+
+        assertEquals("Morning.", sanitized)
+    }
+
+    @Test
+    fun `sanitizeDisplayedMessage falls back when content is empty after cleanup`() {
+        val sanitized = sanitizeDisplayedMessage("<think>internal trace</think>")
+
+        assertEquals("...", sanitized)
     }
 }

@@ -138,6 +138,23 @@ class SummonViewModel(
         uiState = uiState.copy(statusMessage = message)
     }
 
+    fun setCapturePreview(previewState: CapturePreviewState) {
+        uiState = uiState.copy(capturePreviewState = previewState)
+    }
+
+    fun markCapturePreviewSynced(reference: RecentCaptureReference) {
+        uiState = uiState.copy(
+            capturePreviewState = uiState.capturePreviewState?.copy(
+                recentCaptureReference = reference,
+                isSyncedToChat = true,
+            ),
+        )
+    }
+
+    fun clearCapturePreview() {
+        uiState = uiState.copy(capturePreviewState = null)
+    }
+
     fun markCharacterModelLoadStarted(authSession: AuthSession?) {
         uiState = uiState.copy(
             characterModelState = CharacterModelState.LOADING,
@@ -247,7 +264,7 @@ class SummonViewModel(
             uiState = uiState.copy(
                 isSavingCapture = false,
                 pendingRecentCapture = reference,
-                statusMessage = "Screenshot saved locally, but the session is no longer valid.",
+                statusMessage = "截图已保存在本地，但当前登录状态已经失效。",
             )
             return
         }
@@ -268,7 +285,7 @@ class SummonViewModel(
                 uiState = uiState.copy(
                     isSavingCapture = false,
                     pendingRecentCapture = null,
-                    statusMessage = "Capture saved and synced back into chat.",
+                    statusMessage = "截图已保存，并成功同步回聊天。",
                 )
                 onSuccess(savedReference)
             }.onFailure { error ->
@@ -288,7 +305,7 @@ class SummonViewModel(
                     uiState = uiState.copy(
                         isSavingCapture = false,
                         pendingRecentCapture = reference,
-                        statusMessage = "Screenshot saved, but recent capture sync failed. You can retry here.",
+                        statusMessage = "截图已保存，但最近截图同步失败了，你可以在这里重试。",
                     )
                 }
             }

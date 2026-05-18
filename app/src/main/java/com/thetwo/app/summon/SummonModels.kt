@@ -59,6 +59,12 @@ data class MarkerPoseState(
     val projectionMatrix: DoubleArray,
 )
 
+data class CapturePreviewState(
+    val imageLocation: String,
+    val recentCaptureReference: RecentCaptureReference,
+    val isSyncedToChat: Boolean = false,
+)
+
 data class SummonUiState(
     val entryState: SummonEntryState = SummonEntryState.PRIVACY_REQUIRED,
     val markerAsset: MarkerAsset = MarkerAsset(
@@ -85,4 +91,5 @@ data class SummonUiState(
     val isSavingCapture: Boolean = false,
     val statusMessage: String? = null,
     val pendingRecentCapture: RecentCaptureReference? = null,
+    val capturePreviewState: CapturePreviewState? = null,
 )

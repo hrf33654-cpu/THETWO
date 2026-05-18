@@ -1,6 +1,8 @@
 package com.thetwo.app.auth
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,127 +10,147 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.thetwo.app.network.AuthSession
+import com.thetwo.app.ui.AppBackground
+import com.thetwo.app.ui.AppChipTone
+import com.thetwo.app.ui.AppPill
+import com.thetwo.app.ui.GlassPanel
 
 @Composable
 fun LoginScreen(
     viewModel: AuthViewModel,
-    onLoginSuccess: (AuthSession) -> Unit,
+    onCodeRequested: () -> Unit,
 ) {
     val uiState by androidx.compose.runtime.remember { androidx.compose.runtime.derivedStateOf { viewModel.uiState } }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    AppBackground {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
+                .safeDrawingPadding()
+                .padding(horizontal = 24.dp, vertical = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text(
-                text = "THETWO",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "登录流程固定为两步：先发送验证码，再验证进入 THETWO。若服务器已配置邮件服务，验证码会发送到邮箱；开发模式下会显示调试验证码提示。",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-            OutlinedTextField(
-                value = uiState.email,
-                onValueChange = viewModel::updateEmail,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("邮箱") },
-                singleLine = true,
-            )
             Spacer(modifier = Modifier.height(12.dp))
-            OutlinedTextField(
-                value = uiState.verificationCode,
-                onValueChange = viewModel::updateVerificationCode,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("验证码") },
-                supportingText = { Text("若服务器处于开发模式，会在发送验证码后展示调试验证码提示。") },
-                singleLine = true,
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
+
+            Box(
+                modifier = Modifier
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.90f),
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.72f),
+                            ),
+                        ),
+                        shape = CircleShape,
+                    )
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
-                Checkbox(
+                Text(
+                    text = "THETWO",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "进入你的陪伴空间",
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "先输入邮箱，我们会把 6 位验证码发给你。登录后就能继续你的聊天、召唤和最近作品回流。",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            GlassPanel(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "登录",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                OutlinedTextField(
+                    value = uiState.email,
+                    onValueChange = viewModel::updateEmail,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("邮箱地址") },
+                    placeholder = { Text("name@example.com") },
+                    singleLine = true,
+                )
+                ConsentRow(
                     checked = uiState.consentAccepted,
+                    text = "我已阅读并同意隐私说明与数据处理规则",
                     onCheckedChange = viewModel::updateConsentAccepted,
                 )
-                Text(
-                    text = "我已阅读并同意隐私说明与数据处理说明。未勾选前不可请求验证码或登录。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 12.dp),
+                ConsentRow(
+                    checked = uiState.ageConfirmed,
+                    text = "我确认自己已年满 18 岁",
+                    onCheckedChange = viewModel::updateAgeConfirmed,
                 )
-            }
-            uiState.requestMessage?.let { message ->
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = message,
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            uiState.debugCodeHint?.let { debugCode ->
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "开发验证码：$debugCode",
-                    color = MaterialTheme.colorScheme.secondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            uiState.errorMessage?.let { message ->
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = message,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            Spacer(modifier = Modifier.height(24.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedButton(
-                    onClick = viewModel::requestCode,
-                    modifier = Modifier.weight(1f),
-                    enabled = uiState.consentAccepted && !uiState.isRequestingCode && !uiState.isVerifying,
-                ) {
-                    Text(if (uiState.isRequestingCode) "发送中..." else "发送验证码")
+
+                uiState.requestMessage?.let { message ->
+                    AppPill(text = message, tone = AppChipTone.Success)
                 }
+                uiState.errorMessage?.let { message ->
+                    AppPill(text = message, tone = AppChipTone.Danger)
+                }
+
                 Button(
-                    onClick = { viewModel.verifyCode(onLoginSuccess) },
-                    modifier = Modifier.weight(1f),
-                    enabled = uiState.consentAccepted &&
-                        uiState.isCodeRequested &&
-                        !uiState.isVerifying &&
-                        uiState.verificationCode.isNotBlank(),
+                    onClick = { viewModel.requestCode(onCodeRequested) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !uiState.isRequestingCode,
                 ) {
-                    Text(if (uiState.isVerifying) "登录中..." else "进入 THETWO")
+                    Text(if (uiState.isRequestingCode) "发送中..." else "获取验证码")
                 }
             }
+
+            Text(
+                text = "首次进入前，你将在下一页完成验证码验证。系统只会使用必要的登录、聊天同步和截图保存权限。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
+    }
+}
+
+@Composable
+private fun ConsentRow(
+    checked: Boolean,
+    text: String,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+        )
+        Text(
+            text = text,
+            modifier = Modifier.padding(top = 12.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

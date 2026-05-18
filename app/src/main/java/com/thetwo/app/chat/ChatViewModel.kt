@@ -80,7 +80,7 @@ class ChatViewModel(
                     handleBootstrapFailure(error, onUnauthorized)
                     return@launch
                 }
-                historyError = error.toUserFacingMessage("聊天历史加载失败。")
+                historyError = error.toUserFacingMessage("聊天记录加载失败。")
                 emptyList()
             }
 
@@ -91,7 +91,7 @@ class ChatViewModel(
                     handleBootstrapFailure(error, onUnauthorized)
                     return@launch
                 }
-                historyError = historyError ?: error.toUserFacingMessage("最近作品回流加载失败。")
+                historyError = historyError ?: error.toUserFacingMessage("最近一次召唤作品恢复失败。")
                 null
             }
 
@@ -121,7 +121,7 @@ class ChatViewModel(
         val content = uiState.draft.trim()
         if (content.isBlank() || uiState.isReplying) return
         if (session == null) {
-            uiState = uiState.copy(errorMessage = "登录态已失效，请重新登录。")
+            uiState = uiState.copy(errorMessage = "登录状态已失效，请重新登录。")
             return
         }
 
@@ -161,7 +161,7 @@ class ChatViewModel(
                 val companionMessage = ChatMessage(
                     id = "assistant-${reply.timestamp}-$clientMessageId",
                     author = MessageAuthor.COMPANION,
-                    content = reply.assistantMessage,
+                    content = sanitizeDisplayedMessage(reply.assistantMessage),
                     mode = reply.mode,
                 )
                 uiState = uiState.copy(
@@ -195,7 +195,7 @@ class ChatViewModel(
                 } else {
                     uiState = uiState.copy(
                         isReplying = false,
-                        errorMessage = error.toUserFacingMessage("消息发送失败，请稍后重试。"),
+                        errorMessage = error.toUserFacingMessage("消息发送失败，请稍后再试。"),
                         messages = uiState.messages.markMessageStatus(
                             messageId = clientMessageId,
                             status = MessageStatus.FAILED,
@@ -234,7 +234,7 @@ class ChatViewModel(
         val captureMessage = ChatMessage(
             id = "capture-${System.currentTimeMillis()}",
             author = MessageAuthor.COMPANION,
-            content = "$companionName 记住了你刚刚的召唤：${reference.summary}",
+            content = "$companionName 记住了你刚刚保存的召唤作品：${reference.summary}",
         )
         uiState = uiState.copy(
             recentCaptureReference = reference,
@@ -269,7 +269,7 @@ class ChatViewModel(
         } else {
             uiState = uiState.copy(
                 isInitializing = false,
-                errorMessage = error.toUserFacingMessage("聊天初始化失败，请稍后重试。"),
+                errorMessage = error.toUserFacingMessage("聊天初始化失败，请稍后再试。"),
             )
         }
     }
@@ -306,12 +306,12 @@ private fun List<ChatMessage>.markMessageStatus(
     }
 }
 
-private fun defaultWelcomeMessages(companionName: String = "角色"): List<ChatMessage> {
+private fun defaultWelcomeMessages(companionName: String = "你的同伴"): List<ChatMessage> {
     return listOf(
         ChatMessage(
             id = "welcome",
             author = MessageAuthor.COMPANION,
-            content = "欢迎回来。$companionName 会先在聊天里陪你，如果你想见我，也可以随时从上方进入召唤页。",
+            content = "欢迎回来，$companionName 在这里等你。想从刚才的话题继续，还是聊点新的？",
         ),
     )
 }
@@ -320,11 +320,22 @@ private fun toLocalMessage(remoteMessage: RemoteChatMessage): ChatMessage {
     return ChatMessage(
         id = remoteMessage.id,
         author = if (remoteMessage.role == "USER") MessageAuthor.USER else MessageAuthor.COMPANION,
-        content = remoteMessage.content,
+        content = if (remoteMessage.role == "USER") {
+            remoteMessage.content
+        } else {
+            sanitizeDisplayedMessage(remoteMessage.content)
+        },
         status = MessageStatus.SENT,
         mode = remoteMessage.mode,
     )
 }
+
+internal fun sanitizeDisplayedMessage(content: String): String {
+    val cleaned = THINK_BLOCK_REGEX.replace(content, "").trim()
+    return cleaned.ifBlank { "..." }
+}
+
+private val THINK_BLOCK_REGEX = Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE)
 
 private fun Throwable.toAnalyticsErrorCode(): String {
     return if (this is ApiException) {

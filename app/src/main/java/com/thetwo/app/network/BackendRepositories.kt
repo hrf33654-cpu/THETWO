@@ -191,7 +191,7 @@ class MockAuthRepository : AuthRepository {
         when {
             email.isBlank() -> throw IllegalArgumentException("请输入邮箱")
             !email.contains("@") -> throw IllegalArgumentException("请输入有效邮箱")
-            code.length < 4 -> throw IllegalArgumentException("请输入至少 4 位验证码")
+            code.length < 6 -> throw IllegalArgumentException("请输入 6 位验证码")
         }
         return AuthSession(
             userId = "mock-user",

@@ -19,7 +19,7 @@ class MockAuthRepositoryTest {
     fun `verify code succeeds with valid email and code`() = runBlocking {
         val result = repository.verifyCode(
             email = "user@example.com",
-            code = "1234",
+            code = "123456",
         )
 
         assertTrue(result.sessionToken.isNotBlank())

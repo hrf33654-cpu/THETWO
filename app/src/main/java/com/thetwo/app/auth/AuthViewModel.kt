@@ -8,12 +8,14 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.thetwo.app.BuildConfig
 import com.thetwo.app.analytics.AnalyticsEvents
 import com.thetwo.app.analytics.AnalyticsTracker
-import com.thetwo.app.BuildConfig
 import com.thetwo.app.network.AuthRepository
 import com.thetwo.app.network.AuthSession
 import com.thetwo.app.network.toUserFacingMessage
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class AuthViewModel(
@@ -23,19 +25,24 @@ class AuthViewModel(
     var uiState by mutableStateOf(AuthUiState())
         private set
 
+    private var resendCountdownJob: Job? = null
+
     fun updateEmail(value: String) {
+        resendCountdownJob?.cancel()
         uiState = uiState.copy(
             email = value,
             errorMessage = null,
             requestMessage = null,
             debugCodeHint = null,
             isCodeRequested = false,
+            verificationCode = "",
+            resendCooldownSeconds = 0,
         )
     }
 
     fun updateVerificationCode(value: String) {
         uiState = uiState.copy(
-            verificationCode = value,
+            verificationCode = value.filter(Char::isDigit).take(6),
             errorMessage = null,
         )
     }
@@ -47,10 +54,21 @@ class AuthViewModel(
         )
     }
 
-    fun requestCode() {
+    fun updateAgeConfirmed(confirmed: Boolean) {
+        uiState = uiState.copy(
+            ageConfirmed = confirmed,
+            errorMessage = null,
+        )
+    }
+
+    fun requestCode(onSuccess: () -> Unit = {}) {
         if (uiState.isRequestingCode) return
-        if (!uiState.consentAccepted) {
-            uiState = uiState.copy(errorMessage = "请先同意隐私说明与数据处理说明。")
+        if (!hasRequiredConsent()) {
+            uiState = uiState.copy(errorMessage = "请先确认隐私协议，并勾选 18 岁及以上声明。")
+            return
+        }
+        if (uiState.email.isBlank()) {
+            uiState = uiState.copy(errorMessage = "请输入邮箱。")
             return
         }
 
@@ -73,14 +91,17 @@ class AuthViewModel(
                     uiState = uiState.copy(
                         isRequestingCode = false,
                         isCodeRequested = true,
+                        verificationCode = "",
                         requestMessage = result.message,
                         debugCodeHint = if (BuildConfig.DEBUG) result.debugCodeHint else null,
                     )
+                    startResendCountdown()
+                    onSuccess()
                 }
                 .onFailure { error ->
                     uiState = uiState.copy(
                         isRequestingCode = false,
-                        errorMessage = error.toUserFacingMessage("验证码请求失败，请稍后重试。"),
+                        errorMessage = error.toUserFacingMessage("验证码发送失败，请稍后再试。"),
                     )
                 }
         }
@@ -88,12 +109,16 @@ class AuthViewModel(
 
     fun verifyCode(onSuccess: (AuthSession) -> Unit) {
         if (uiState.isVerifying) return
-        if (!uiState.consentAccepted) {
-            uiState = uiState.copy(errorMessage = "请先同意隐私说明与数据处理说明。")
+        if (!hasRequiredConsent()) {
+            uiState = uiState.copy(errorMessage = "请先确认隐私协议，并勾选 18 岁及以上声明。")
             return
         }
         if (!uiState.isCodeRequested) {
-            uiState = uiState.copy(errorMessage = "请先发送验证码。")
+            uiState = uiState.copy(errorMessage = "请先获取验证码。")
+            return
+        }
+        if (uiState.verificationCode.length < 6) {
+            uiState = uiState.copy(errorMessage = "请输入 6 位验证码。")
             return
         }
 
@@ -112,7 +137,7 @@ class AuthViewModel(
                     event = AnalyticsEvents.LOGIN_VERIFY_SUCCESS,
                     properties = mapOf(
                         "userId" to session.userId,
-                        "screen" to "login",
+                        "screen" to "verify",
                         "result" to "success",
                     ),
                 )
@@ -121,9 +146,24 @@ class AuthViewModel(
             }.onFailure { error ->
                 uiState = uiState.copy(
                     isVerifying = false,
-                    errorMessage = error.toUserFacingMessage("验证失败，请稍后重试。"),
+                    errorMessage = error.toUserFacingMessage("验证码校验失败，请重试。"),
                 )
             }
+        }
+    }
+
+    private fun hasRequiredConsent(): Boolean {
+        return uiState.consentAccepted && uiState.ageConfirmed
+    }
+
+    private fun startResendCountdown() {
+        resendCountdownJob?.cancel()
+        resendCountdownJob = viewModelScope.launch {
+            for (seconds in 60 downTo 1) {
+                uiState = uiState.copy(resendCooldownSeconds = seconds)
+                delay(1_000)
+            }
+            uiState = uiState.copy(resendCooldownSeconds = 0)
         }
     }
 

@@ -119,7 +119,7 @@ class LaunchViewModel(
 
                 uiState = LaunchUiState(
                     isRestoring = false,
-                    errorMessage = error.toUserFacingMessage("会话恢复失败，请重试。"),
+                    errorMessage = error.toUserFacingMessage("恢复会话失败，请稍后再试。"),
                 )
             }
         }

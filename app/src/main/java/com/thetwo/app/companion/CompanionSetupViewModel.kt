@@ -11,8 +11,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thetwo.app.analytics.AnalyticsEvents
 import com.thetwo.app.analytics.AnalyticsTracker
 import com.thetwo.app.network.ApiException
-import com.thetwo.app.network.CompanionRepository
 import com.thetwo.app.network.AuthSession
+import com.thetwo.app.network.CompanionRepository
 import com.thetwo.app.network.toUserFacingMessage
 import kotlinx.coroutines.launch
 
@@ -47,7 +47,7 @@ class CompanionSetupViewModel(
         if (uiState.isSaving) return
         val profile = buildProfileOrNull() ?: return
         if (authSession == null) {
-            uiState = uiState.copy(errorMessage = "登录态已失效，请重新登录。")
+            uiState = uiState.copy(errorMessage = "登录状态已失效，请重新登录。")
             return
         }
 
@@ -76,7 +76,7 @@ class CompanionSetupViewModel(
                 } else {
                     uiState = uiState.copy(
                         isSaving = false,
-                        errorMessage = error.toUserFacingMessage("角色资料保存失败，请稍后重试。"),
+                        errorMessage = error.toUserFacingMessage("保存同伴资料失败，请稍后再试。"),
                     )
                 }
             }
@@ -85,7 +85,7 @@ class CompanionSetupViewModel(
 
     private fun buildProfileOrNull(): CompanionProfile? {
         if (uiState.nickname.isBlank()) {
-            uiState = uiState.copy(errorMessage = "请先给角色起一个名字。")
+            uiState = uiState.copy(errorMessage = "先给你的同伴起个名字吧。")
             return null
         }
 

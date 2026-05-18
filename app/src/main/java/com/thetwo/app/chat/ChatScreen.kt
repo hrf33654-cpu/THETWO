@@ -1,43 +1,59 @@
 package com.thetwo.app.chat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.thetwo.app.network.RemoteChatMode
 import com.thetwo.app.session.AppSessionViewModel
+import com.thetwo.app.ui.AppBackground
+import com.thetwo.app.ui.AppChipTone
+import com.thetwo.app.ui.AppPill
+import com.thetwo.app.ui.CompanionBadge
+import com.thetwo.app.ui.MetadataLine
+import com.thetwo.app.ui.theme.Aurora
+import com.thetwo.app.ui.theme.Ink
+import com.thetwo.app.ui.theme.Mist
+import com.thetwo.app.ui.theme.NightOutline
+import com.thetwo.app.ui.theme.RoseMist
 
 @Composable
 fun ChatScreen(
@@ -47,10 +63,11 @@ fun ChatScreen(
     onOpenSettings: () -> Unit,
     onProfileRequired: () -> Unit = {},
     onUnauthorized: () -> Unit = {},
+    contentPadding: PaddingValues = PaddingValues(0.dp),
 ) {
     val uiState = viewModel.uiState
     val sessionState = sessionViewModel.uiState
-    val companionName = sessionState.companionProfile?.nickname ?: "角色"
+    val companionName = sessionState.companionProfile?.nickname ?: "灵儿"
     val sessionToken = sessionState.authSession?.sessionToken
 
     LaunchedEffect(sessionState.authSession?.sessionToken) {
@@ -69,131 +86,81 @@ fun ChatScreen(
         )
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-    ) {
+    AppBackground {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(WindowInsets.safeDrawing.asPaddingValues())
-                .padding(horizontal = 16.dp)
-                .imePadding()
-                .navigationBarsPadding(),
+                .statusBarsPadding()
+                .padding(bottom = contentPadding.calculateBottomPadding())
+                .imePadding(),
         ) {
             ChatHeader(
                 companionName = companionName,
-                email = sessionState.authSession?.email,
+                isRestrictedMode = uiState.isRestrictedMode,
                 onOpenSummon = onOpenSummon,
                 onOpenSettings = onOpenSettings,
             )
 
-            if (sessionToken.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(12.dp))
-                InlineNotice(
-                    text = "当前未登录，聊天不会同步到后端。请先重新登录后再继续联调。",
-                    isError = true,
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ) {
+                MessagesPanel(
+                    messages = uiState.messages,
+                    companionName = companionName,
+                    isInitializing = uiState.isInitializing,
+                    onRetry = { messageId ->
+                        viewModel.retryMessage(
+                            messageId = messageId,
+                            authSession = sessionState.authSession,
+                            onUnauthorized = onUnauthorized,
+                        )
+                    },
                 )
             }
 
-            if (uiState.isRestrictedMode) {
-                Spacer(modifier = Modifier.height(12.dp))
-                InlineNotice(
-                    text = "当前会话已切到更保守的陪伴模式，回复会收紧，也不会主动发起召唤邀约。",
-                    isError = true,
+            when {
+                sessionToken.isNullOrBlank() -> InlineNotice(
+                    title = "登录状态已失效",
+                    message = "请重新登录后再继续聊天和同步最近作品。",
+                    tone = AppChipTone.Danger,
                 )
-            }
 
-            uiState.errorMessage?.let { message ->
-                Spacer(modifier = Modifier.height(12.dp))
-                InlineNotice(
-                    text = message,
-                    isError = true,
+                uiState.errorMessage != null -> InlineNotice(
+                    title = "需要处理一下",
+                    message = uiState.errorMessage,
+                    tone = AppChipTone.Warning,
                 )
             }
 
             sessionState.recentCaptureReference?.let { capture ->
-                Spacer(modifier = Modifier.height(12.dp))
                 RecentCaptureCard(capture = capture)
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            if (uiState.isInitializing) {
-                Text(
-                    text = "正在同步聊天记录…",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-            }
-
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(uiState.messages, key = { it.id }) { message ->
-                    MessageBubble(
-                        message = message,
-                        onRetry = if (message.status == MessageStatus.FAILED) {
-                            {
-                                viewModel.retryMessage(
-                                    messageId = message.id,
-                                    authSession = sessionState.authSession,
-                                    onUnauthorized = onUnauthorized,
-                                )
-                            }
-                        } else {
-                            null
-                        },
+            } ?: run {
+                if (uiState.messages.size >= 3) {
+                    SummonCtaBanner(
+                        companionName = companionName,
+                        onOpenSummon = onOpenSummon,
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 4.dp,
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    TextField(
-                        value = uiState.draft,
-                        onValueChange = viewModel::updateDraft,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp)),
-                        placeholder = {
-                            Text("给 $companionName 发一条消息")
-                        },
-                        minLines = 3,
-                        maxLines = 5,
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent,
-                            cursorColor = MaterialTheme.colorScheme.primary,
-                        ),
+            ComposerBar(
+                draft = uiState.draft,
+                companionName = companionName,
+                isReplying = uiState.isReplying,
+                isInitializing = uiState.isInitializing,
+                canSend = !sessionToken.isNullOrBlank() && uiState.draft.isNotBlank(),
+                onDraftChange = viewModel::updateDraft,
+                onSummon = onOpenSummon,
+                onSend = {
+                    viewModel.sendMessage(
+                        authSession = sessionState.authSession,
+                        onUnauthorized = onUnauthorized,
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = {
-                            viewModel.sendMessage(
-                                authSession = sessionState.authSession,
-                                onUnauthorized = onUnauthorized,
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !uiState.isReplying && !uiState.isInitializing && !sessionToken.isNullOrBlank(),
-                    ) {
-                        Text(if (uiState.isReplying) "发送中…" else "发送")
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
+                },
+            )
         }
     }
 }
@@ -201,69 +168,102 @@ fun ChatScreen(
 @Composable
 private fun ChatHeader(
     companionName: String,
-    email: String?,
+    isRestrictedMode: Boolean,
     onOpenSummon: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.White,
+        tonalElevation = 0.dp,
+        shadowElevation = 2.dp,
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surface,
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
-                        ),
-                    ),
-                )
-                .padding(18.dp),
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = "THETWO",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = companionName,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "聊天首页",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            email?.let {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            CompanionBadge(name = companionName, size = 56.dp)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Button(
-                    onClick = onOpenSummon,
-                    modifier = Modifier.weight(1f),
+                Text(
+                    text = companionName,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Ink,
+                    fontWeight = FontWeight.Bold,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text("召唤角色")
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(
+                                color = if (isRestrictedMode) Color(0xFFFFB449) else Color(0xFF55D66B),
+                                shape = CircleShape,
+                            ),
+                    )
+                    Text(
+                        text = if (isRestrictedMode) "谨慎模式中" else "在线，等着你呢",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Mist,
+                    )
                 }
-                OutlinedButton(
-                    onClick = onOpenSettings,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("设置")
+            }
+            SummonButton(onClick = onOpenSummon)
+            Surface(
+                modifier = Modifier.size(42.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = 0.dp,
+            ) {
+                IconButton(onClick = onOpenSettings) {
+                    Icon(
+                        imageVector = Icons.Rounded.Settings,
+                        contentDescription = "打开设置",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummonButton(onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(22.dp),
+        color = Color.Transparent,
+    ) {
+        Box(
+            modifier = Modifier
+                .background(
+                    brush = Brush.horizontalGradient(listOf(Aurora, RoseMist)),
+                    shape = RoundedCornerShape(22.dp),
+                )
+                .padding(horizontal = 18.dp, vertical = 11.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.AutoAwesome,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = "召唤",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Color.White,
+                )
             }
         }
     }
@@ -271,128 +271,365 @@ private fun ChatHeader(
 
 @Composable
 private fun InlineNotice(
-    text: String,
-    isError: Boolean = false,
+    title: String,
+    message: String,
+    tone: AppChipTone,
 ) {
     Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = if (isError) {
-            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f)
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
-        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 4.dp),
+        color = Color.White.copy(alpha = 0.92f),
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 0.dp,
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (isError) {
-                MaterialTheme.colorScheme.onErrorContainer
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            modifier = Modifier.padding(14.dp),
-        )
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            AppPill(text = title, tone = tone)
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
     }
 }
 
 @Composable
 private fun RecentCaptureCard(capture: RecentCaptureReference) {
     Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 4.dp),
+        color = Color(0xFFFFFBFD),
         shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+        tonalElevation = 0.dp,
+        shadowElevation = 1.dp,
     ) {
-        Column(
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(54.dp)
+                    .background(
+                        Brush.linearGradient(listOf(RoseMist, Aurora)),
+                        RoundedCornerShape(16.dp),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.CameraAlt,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "最近的召唤作品",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Mist,
+                )
+                Text(
+                    text = capture.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Ink,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = capture.summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Surface(
+                modifier = Modifier.size(24.dp),
+                shape = CircleShape,
+                color = Color(0xFFF4F1F5),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = null,
+                        tint = Mist,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummonCtaBanner(
+    companionName: String,
+    onOpenSummon: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 4.dp)
+            .clickable(onClick = onOpenSummon),
+        color = Color.Transparent,
+        shape = RoundedCornerShape(22.dp),
+        tonalElevation = 0.dp,
+    ) {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .border(1.dp, Color(0xFFF2C7DC), RoundedCornerShape(22.dp))
+                .background(
+                    Color(0x1FEA72C2),
+                    RoundedCornerShape(22.dp),
+                )
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = capture.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
+            Icon(
+                imageVector = Icons.Rounded.CameraAlt,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
             )
-            Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = capture.summary,
+                text = "把${companionName}召唤到你的世界里",
+                modifier = Modifier.padding(horizontal = 8.dp),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = capture.storageLocation,
-                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium,
+            )
+            Icon(
+                imageVector = Icons.Rounded.AutoAwesome,
+                contentDescription = null,
+                tint = RoseMist,
+                modifier = Modifier.size(18.dp),
             )
         }
     }
 }
 
 @Composable
-private fun MessageBubble(
+private fun MessagesPanel(
+    messages: List<ChatMessage>,
+    companionName: String,
+    isInitializing: Boolean,
+    onRetry: (String) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(bottom = 6.dp),
+    ) {
+        if (isInitializing) {
+            item {
+                AppPill(
+                    text = "正在恢复最近聊天和陪伴状态…",
+                    tone = AppChipTone.Default,
+                )
+            }
+        }
+        items(messages, key = { it.id }) { message ->
+            MessageRow(
+                companionName = companionName,
+                message = message,
+                onRetry = onRetry,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MessageRow(
+    companionName: String,
     message: ChatMessage,
-    onRetry: (() -> Unit)?,
+    onRetry: (String) -> Unit,
 ) {
     val isUser = message.author == MessageAuthor.USER
-
-    Box(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart,
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom,
     ) {
-        Surface(
-            modifier = Modifier.widthIn(max = 320.dp),
-            shape = RoundedCornerShape(
-                topStart = 24.dp,
-                topEnd = 24.dp,
-                bottomStart = if (isUser) 24.dp else 8.dp,
-                bottomEnd = if (isUser) 8.dp else 24.dp,
-            ),
-            color = if (isUser) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
-            },
+        if (!isUser) {
+            CompanionBadge(
+                name = companionName,
+                size = 34.dp,
+                modifier = Modifier.padding(end = 8.dp, bottom = 4.dp),
+            )
+        }
+        Column(
+            modifier = Modifier.widthIn(max = 292.dp),
+            horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+            if (!isUser) {
                 Text(
-                    text = if (isUser) "你" else "角色",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = companionName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Mist,
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = message.content,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                when (message.status) {
-                    MessageStatus.SENDING -> {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
+            }
+            Surface(
+                shape = RoundedCornerShape(
+                    topStart = 22.dp,
+                    topEnd = 22.dp,
+                    bottomStart = if (isUser) 22.dp else 10.dp,
+                    bottomEnd = if (isUser) 10.dp else 22.dp,
+                ),
+                color = if (isUser) {
+                    Brush.linearGradient(listOf(Color(0xFFE95ECA), Color(0xFFF472B6))).toSurfaceColor()
+                } else {
+                    Color.White
+                },
+                tonalElevation = 0.dp,
+                shadowElevation = 1.dp,
+                modifier = Modifier.border(
+                    1.dp,
+                    if (isUser) {
+                        Color.Transparent
+                    } else {
+                        NightOutline.copy(alpha = 0.6f)
+                    },
+                    RoundedCornerShape(
+                        topStart = 22.dp,
+                        topEnd = 22.dp,
+                        bottomStart = if (isUser) 22.dp else 10.dp,
+                        bottomEnd = if (isUser) 10.dp else 22.dp,
+                    ),
+                ),
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = message.content,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (isUser) Color.White else MaterialTheme.colorScheme.onSurface,
+                    )
+                    when (message.status) {
+                        MessageStatus.SENDING -> Text(
                             text = "发送中…",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (isUser) Color.White.copy(alpha = 0.78f) else Mist,
                         )
-                    }
 
-                    MessageStatus.FAILED -> {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "发送失败",
+                        MessageStatus.FAILED -> Text(
+                            text = "发送失败，点我重试",
+                            modifier = Modifier.clickable { onRetry(message.id) },
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
+                            color = if (isUser) Color.White else MaterialTheme.colorScheme.error,
                         )
-                        onRetry?.let {
-                            TextButton(
-                                onClick = it,
-                                contentPadding = PaddingValues(0.dp),
-                            ) {
-                                Text("重试发送")
+
+                        MessageStatus.SENT -> {
+                            if (!isUser && message.mode != RemoteChatMode.NORMAL) {
+                                AppPill(text = "保护模式", tone = AppChipTone.Warning)
                             }
                         }
                     }
-
-                    MessageStatus.SENT -> Unit
                 }
+            }
+            Text(
+                text = if (isUser) "刚刚" else "在线陪伴中",
+                style = MaterialTheme.typography.bodySmall,
+                color = Mist,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ComposerBar(
+    draft: String,
+    companionName: String,
+    isReplying: Boolean,
+    isInitializing: Boolean,
+    canSend: Boolean,
+    onDraftChange: (String) -> Unit,
+    onSummon: () -> Unit,
+    onSend: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.White,
+        tonalElevation = 0.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 18.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(
+                modifier = Modifier.size(42.dp),
+                shape = CircleShape,
+                color = Color.Transparent,
+                onClick = onSummon,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.linearGradient(listOf(Color(0xFFFFE0F0), Color(0xFFF1E0FF))),
+                            CircleShape,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.AutoAwesome,
+                        contentDescription = "打开召唤",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = draft,
+                onValueChange = onDraftChange,
+                modifier = Modifier.weight(1f),
+                placeholder = {
+                    Text(if (isReplying) "${companionName} 正在回复…" else "和${companionName}说点什么…")
+                },
+                enabled = !isInitializing,
+                singleLine = false,
+                maxLines = 4,
+                shape = RoundedCornerShape(24.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = Color(0xFFF7F7FA),
+                    unfocusedContainerColor = Color(0xFFF7F7FA),
+                    disabledContainerColor = Color(0xFFF7F7FA),
+                ),
+            )
+            FilledIconButton(
+                onClick = onSend,
+                enabled = canSend && !isReplying && !isInitializing,
+                modifier = Modifier.size(42.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = "发送",
+                )
             }
         }
     }
 }
+
+private fun Brush.toSurfaceColor(): Color = Color(0xFFE95ECA)

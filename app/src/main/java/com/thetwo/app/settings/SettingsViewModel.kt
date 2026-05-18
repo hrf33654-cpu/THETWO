@@ -39,7 +39,7 @@ class SettingsViewModel(
     ) {
         val session = authSession
         if (session == null) {
-            uiState = uiState.copy(feedbackMessage = "登录态已失效，请重新登录。")
+            uiState = uiState.copy(feedbackMessage = "登录状态已失效，请重新登录。")
             return
         }
 
@@ -57,7 +57,7 @@ class SettingsViewModel(
                     )
                     uiState = uiState.copy(
                         isWorking = false,
-                        feedbackMessage = "已清除 App 内最近作品回流记录，不会删除系统相册文件。",
+                        feedbackMessage = "最近一次召唤截图的引用已从 THETWO 清除，系统相册中的原图仍会保留。",
                     )
                     onSuccess()
                 }
@@ -74,7 +74,7 @@ class SettingsViewModel(
     ) {
         val session = authSession
         if (session == null) {
-            uiState = uiState.copy(feedbackMessage = "登录态已失效，请重新登录。")
+            uiState = uiState.copy(feedbackMessage = "登录状态已失效，请重新登录。")
             return
         }
 
@@ -92,7 +92,7 @@ class SettingsViewModel(
                     )
                     uiState = uiState.copy(
                         isWorking = false,
-                        feedbackMessage = "已清空远端聊天记录，本地聊天已重置为欢迎消息。",
+                        feedbackMessage = "同步聊天记录已清除，本地对话线程也已重置。",
                     )
                     onSuccess()
                 }
@@ -118,7 +118,7 @@ class SettingsViewModel(
         }
         uiState = uiState.copy(
             isWorking = false,
-            feedbackMessage = "已退出登录。",
+            feedbackMessage = "已成功退出登录。",
         )
         onSuccess()
     }
@@ -130,7 +130,7 @@ class SettingsViewModel(
     ) {
         val session = authSession
         if (session == null) {
-            uiState = uiState.copy(feedbackMessage = "登录态已失效，请重新登录。")
+            uiState = uiState.copy(feedbackMessage = "登录状态已失效，请重新登录。")
             return
         }
 
@@ -168,7 +168,7 @@ class SettingsViewModel(
         } else {
             uiState = uiState.copy(
                 isWorking = false,
-                feedbackMessage = error.toUserFacingMessage("操作失败，请稍后重试。"),
+                feedbackMessage = error.toUserFacingMessage("操作失败，请稍后再试。"),
             )
         }
     }
